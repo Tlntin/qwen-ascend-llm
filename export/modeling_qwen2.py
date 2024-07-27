@@ -700,15 +700,16 @@ class Qwen2SdpaAttention(Qwen2Attention):
             query_states = query_states.contiguous()
             key_states = key_states.contiguous()
             value_states = value_states.contiguous()
-
+        # copy from chatglm3-6b
+        # attention_mask = ~attention_mask
         attn_output = torch.nn.functional.scaled_dot_product_attention(
             query_states,
             key_states,
             value_states,
             attn_mask=attention_mask,
-            dropout_p=self.attention_dropout if self.training else 0.0,
+            # dropout_p=self.attention_dropout if self.training else 0.0,
             # The q_len > 1 is necessary to match with AttentionMaskConverter.to_causal_4d that does not create a causal mask in case q_len == 1.
-            is_causal=self.is_causal and attention_mask is None and q_len > 1,
+            # is_causal=self.is_causal and attention_mask is None and q_len > 1,
         )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
@@ -736,8 +737,8 @@ class Qwen2DecoderLayer(nn.Module):
                 f"Sliding Window Attention is enabled but not implemented for `{config._attn_implementation}`; "
                 "unexpected results may be encountered."
             )
-        self.self_attn = QWEN2_ATTENTION_CLASSES[config._attn_implementation](config, layer_idx)
-
+        # self.self_attn = QWEN2_ATTENTION_CLASSES[config._attn_implementation](config, layer_idx)
+        self.self_attn = Qwen2SdpaAttention(config, layer_idx)
         self.mlp = Qwen2MLP(config)
         self.input_layernorm = Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
@@ -950,6 +951,28 @@ class Qwen2Model(Qwen2PreTrainedModel):
     def set_input_embeddings(self, value):
         self.embed_tokens = value
 
+    @staticmethod
+    def get_masks(input_ids, past_key_values, padding_mask=None):
+        batch_size, seq_length = input_ids.shape
+        full_attention_mask = torch.ones(batch_size, seq_length, seq_length,
+                                         device=input_ids.device)
+        full_attention_mask.tril_()
+        past_length = past_key_values.shape[4]
+        # if past_length is not None:
+        full_attention_mask = torch.cat(
+            (torch.ones(batch_size, seq_length, past_length,
+                        device=input_ids.device), full_attention_mask),
+            dim=-1
+        )
+        if padding_mask is not None:
+            full_attention_mask = full_attention_mask * padding_mask.unsqueeze(
+                1)
+        if not past_length and padding_mask is not None:
+            full_attention_mask -= padding_mask.unsqueeze(-1) - 1
+        full_attention_mask = (full_attention_mask < 0.5).bool()
+        full_attention_mask.unsqueeze_(1)
+        return full_attention_mask
+
     @add_start_docstrings_to_model_forward(QWEN2_INPUTS_DOCSTRING)
     def forward(
         self,
@@ -1009,7 +1032,7 @@ class Qwen2Model(Qwen2PreTrainedModel):
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
-
+        """
         if attention_mask is not None and self._attn_implementation == "flash_attention_2" and use_cache:
             is_padding_right = attention_mask[:, -1].sum().item() != batch_size
             if is_padding_right:
@@ -1033,6 +1056,7 @@ class Qwen2Model(Qwen2PreTrainedModel):
             )
         else:
             # 4d mask is passed through the layers
+            # [1, 1, 2, 1026], value=-65504
             attention_mask = _prepare_4d_causal_attention_mask(
                 attention_mask,
                 (batch_size, seq_length),
@@ -1040,7 +1064,17 @@ class Qwen2Model(Qwen2PreTrainedModel):
                 past_key_values_length,
                 sliding_window=self.config.sliding_window,
             )
-
+        """
+        # copy from chatglm3-6b
+        full_attention_mask = self.get_masks(
+            input_ids,
+            past_key_values,
+            attention_mask,
+        )
+        dtype = past_key_values.dtype
+        device = input_ids.device
+        attention_mask = torch.zeros_like(full_attention_mask, dtype=dtype).to(device)
+        attention_mask.masked_fill_(full_attention_mask, torch.finfo(dtype).min)
         hidden_states = inputs_embeds
 
         # decoder layers

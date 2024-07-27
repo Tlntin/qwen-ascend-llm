@@ -29,8 +29,8 @@ parser.add_argument(
     default=os.path.join(onnx_model_dir, "qwen1.5_0.5b_chat.onnx")
 )
 parser.add_argument(
-    "--ms_model_path",
-    help="mindspore model path",
+    "--om_model_path",
+    help=".om model path",
     type=str,
     default= os.path.join(model_dir, "qwen1.5_0.5b_chat")
 )
@@ -93,7 +93,7 @@ command_lines = [
     "atc",
     "--framework=5",
     '--model="{}"'.format(args.onnx_model_path),
-    '--output="{}"'.format(args.ms_model_path),
+    '--output="{}"'.format(args.om_model_path),
     "--soc_version=Ascend{}".format(get_soc_version()),
     "--precision_mode=must_keep_origin_dtype",
     "--input_format=ND",

@@ -32,6 +32,7 @@ for node in tqdm(model.graph.node, desc="replace node..."):
     if node.op_type == "Trilu":
         new_node = helper.make_node(
             "Trilu",
+            name="MY_" + node.name,
             inputs=[node.input[0]],
             outputs=node.output,
             upper=0

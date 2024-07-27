@@ -1,0 +1,54 @@
+import os
+from transformers.models.qwen2 import Qwen2Config, Qwen2Tokenizer
+
+
+class InferenceConfig:
+    def __init__(
+        self,
+        hf_model_dir: str,
+        om_model_path: str,
+        onnx_model_path: str,
+        session_type: str = "acl", # 支持acl和onnx两种，acl即Ascend C Language
+        device_id: int = 0,
+        sampling_method: str = "top_k",
+        sampling_value: float = 10,
+        temperature: float = 0.7,
+        max_input_length: int = 512, # 输入长度的最大数值
+        max_output_length: int = 1024, # 输出长度的最大值
+        kvcache_method: str = "fixsize", # kv_cache类型，支持basic,fixsize,streamllm,H2O四种，具体可以去kvcache.py查看
+        kv_cache_length: int = 1024, # kvcache的最大长度
+        cache_format: str = 'huggingface-tensor', # kv_cache的格式
+        dtype:str="float16",
+    ):
+        self.tokenizer_dir = hf_model_dir
+        self.session_type = session_type
+        if self.session_type == "acl":
+            assert os.path.exists(om_model_path), print(om_model_path, "not exists")
+        elif self.session_type == "onnx":
+            assert os.path.exists(onnx_model_path), print(onnx_model_path, "not exists")
+        self.om_model_path = om_model_path
+        self.onnx_model_path = onnx_model_path
+        self.device_id = device_id
+        self.sampling_method = sampling_method
+        self.sampling_value = sampling_value
+        self.temperature = temperature
+        self.max_input_length = max_input_length
+        self.max_output_length = max_output_length
+        self.kvcache_method = kvcache_method
+        self.kv_cache_length = kv_cache_length  # max_cache_size
+        self.cache_format = cache_format
+        self.dtype = dtype
+        self.model_config = Qwen2Config.from_pretrained(hf_model_dir)
+        self.num_hidden_layers = self.model_config.num_hidden_layers # n_layer
+        self.num_key_value_heads = self.model_config.num_key_value_heads # head_num
+        self.hidden_size = self.model_config.hidden_size # hidden_dim
+        self.num_attention_heads = self.model_config.num_attention_heads
+        self.per_head_dim = self.hidden_size // self.num_attention_heads # head_dim
+        self.past_key_value_shape = (
+            self.num_hidden_layers,
+            2,
+            1,
+            self.num_key_value_heads,
+            self.kv_cache_length,
+            self.per_head_dim
+        )

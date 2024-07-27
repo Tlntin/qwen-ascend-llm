@@ -16,9 +16,6 @@ import onnx
 import io
 import argparse
 
-device_str = "npu"
-if device_str == "npu":
-    import torch_npu
 
 now_dir = os.path.dirname(os.path.abspath(__file__))
 project_dir = os.path.dirname(now_dir)
@@ -32,6 +29,20 @@ if not os.path.exists(onnx_model_dir):
 
 def parser_arguments():
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--device_str",
+        type=str,
+        choices=["npu", "cuda", "cpu"],
+        help="support npu, cuda, cpu",
+        default="npu",
+    )
+    parser.add_argument(
+        "--dtype" ,
+        type=str,
+        help="support float16/float32, if use CPU, only support fp32",
+        choices=["float16", "float32"],
+        default="float16",
+    )
     parser.add_argument(
         '--hf_model_dir',
         type=str,
@@ -54,17 +65,29 @@ def parser_arguments():
 
 
 def export_onnx(
-        base_model: str,
-        output_path: str,
-        kv_cache_length: int,
-        num_hidden_layers: int,
-        num_key_value_heads: int,
-        per_head_dim: int,
+    device_str,
+    dtype: str,
+    hf_model_dir: str,
+    onnx_model_path: str,
+    kv_cache_length: int,
+    num_hidden_layers: int,
+    num_key_value_heads: int,
+    per_head_dim: int,
 ):
+    if device_str == "npu":
+        import torch_npu
+    if dtype == "float16":
+        assert device_str.lower() != "cpu", print("cpu not support fp16")
+        torch_dtype = torch.float16
+    elif dtype == "float32":
+        torch_dtype = torch.float32
+    else:
+        raise Exception("unsupport dtype")
+
     device = torch.device(device_str)
     model = Qwen2ForCausalLM.from_pretrained(
-        base_model,
-        torch_dtype=torch.float16,
+        hf_model_dir,
+        torch_dtype=torch_dtype,
         trust_remote_code=True
     ).to(device)
     quantize_cfg = {
@@ -95,8 +118,8 @@ def export_onnx(
     output_names = ["logits", "out_key_values"]
     dynamic_axes = {
         "input_ids": {0: "batch_size", 1: "seq_length"},
+        "attention_mask": {0: "batch_size", 1: "seq_length+kv_len"},
         "position_ids": {0: "batch_size", 1: "seq_length"},
-        "attention_mask": {0: "batch_size", 1: "all_len"},
         "past_key_values": {2: "batch_size", 4: "kv_len"},
     }
     batch_size = 1
@@ -115,7 +138,7 @@ def export_onnx(
             kv_cache_length,
             per_head_dim
         ),
-        dtype=torch.float16
+        dtype=torch_dtype
     ).to(device)
     input_args = (
         input_ids,
@@ -128,7 +151,6 @@ def export_onnx(
         True,  # output_attentions: Optional[bool] = None,
         None,  # output_hidden_states
         False  # return_dict:
-
     )
     model.eval()
     with torch.no_grad():
@@ -137,11 +159,11 @@ def export_onnx(
         # print(model)
         torch.onnx.export(
             model,
-            f=output_path,
+            f=onnx_model_path,
             args=input_args,
             input_names=input_names,
             output_names=output_names,
-            #dynamic_axes=dynamic_axes,
+            dynamic_axes=dynamic_axes,
             do_constant_folding=False,
             opset_version=14,
             export_params=True
@@ -178,9 +200,11 @@ if __name__ == "__main__":
     print("new model config save ok in ", args.hf_model_dir)
     print("begin export onnx")
     export_onnx(
-        args.hf_model_dir,
-        args.onnx_model_path,
-        args.kv_cache_length,
+        device_str=args.device_str,
+        dtype=args.dtype,
+        hf_model_dir=args.hf_model_dir,
+        onnx_model_path=args.onnx_model_path,
+        kv_cache_length=args.kv_cache_length,
         num_hidden_layers=num_hidden_layers,
         num_key_value_heads=num_key_value_heads,
         per_head_dim=per_head_dim

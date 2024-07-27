@@ -13,38 +13,46 @@
 
 ### 分步骤运行
 ##### 步骤1：编译模型
-1. 进入export文件夹
+1. 进入export文件夹, 导出onnx。
   ```bash
   cd export
-  ```
-2. 导出onnx。
-  ```bash
   python3 export_onnx.py --hf_model_dir="download/[你下载的模型路径]"
+  cd..
   ```
 
-3. 改变onnx结构，目前导出的Trilu算子和Cast算子有些问题，需要改一下结构。
+2. 验证onnx，返回项目根目录，运行cli_chat.py，测试一下onnx对话是否正常。
   ```bash
+  python3 ./cli_chat.py --session_type=onnx 
+  ```
+
+3. 进入export文件夹，改变onnx结构，目前导出的Trilu算子和Cast算子有些问题，atc命令无法识别，需要改一下结构。
+  ```bash
+  cd export
   python3 change_node.py
+  cd ..
   ```
 
 4. 转onnx为om模型
   ```bash
+  cd export
   python3 onnx2om.py --hf_model_dir="download/[你下载的模型路径]"
-  ```
-
-5. 返回上层路径
-  ```bash
   cd ..
   ```
 
+
 ##### 步骤2：运行模型
+- 使用下面的命令直接运行模型
+  ```bash
+  python3 ./cli_chat.py --hf_model_dir="download/[你下载的模型路径]"
+  ```
 
 
 
 ### 当前功能
 - [x] 导出onnx, om模型
-- [ ] 模型推理
-- [ ] 流式传输
+- [x] 模型推理，支持onnx推理。
+- [ ] 模型推理，支持acl推理。
+- [x] 流式传输
 - [ ] 兼容OpenAI的api搭建
 - [ ] 支持functional call
 - [ ] 支持模型量化，如weight only, smooth quant等
