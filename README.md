@@ -24,7 +24,7 @@
     --kv_cache_length=1024
   ```
 
-2. 验证onnx，返回项目根目录，运行cli_chat.py，测试一下onnx对话是否正常。
+2. 验证onnx，返回项目根目录，运行cli_chat.py，测试一下onnx对话是否正常（注意：由于是cpu运行，所以速度较慢，请耐心等待）。
   ```bash
   python3 ./cli_chat.py \
     --session_type=onnx \

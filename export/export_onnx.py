@@ -93,7 +93,7 @@ def export_onnx(
     model = Qwen2ForCausalLM.from_pretrained(
         hf_model_dir,
         torch_dtype=torch_dtype,
-        trust_remote_code=True
+        # trust_remote_code=True
     ).to(device)
     quantize_cfg = {
         "query_key_value": {
@@ -153,7 +153,7 @@ def export_onnx(
         # None,  # inputs_embeds: Optional[torch.FloatTensor] = None,
         # None,  # labels: Optional[torch.LongTensor] = None,
         # True,  # use_cache: Optional[bool] = None,
-        True,  # output_attentions: Optional[bool] = None,
+        # True,  # output_attentions: Optional[bool] = None,
         # None,  # output_hidden_states
         # False  # return_dict:
     )
