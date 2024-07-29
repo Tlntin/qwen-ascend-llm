@@ -10,6 +10,13 @@ project_dir = os.path.dirname(now_dir)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
+    "--dtype",
+    type=str,
+    help="float16 or float32",
+    choices=["float16", "float32"],
+    default="float32",
+)
+parser.add_argument(
     '--hf_model_dir',
     type=str,
     help="model and tokenizer path, only support huggingface model",
@@ -23,6 +30,13 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
+if args.dtype == "float16":
+    np_dtype = np.float16
+elif args.dtype == "float32":
+    np_dtype = np.float32
+else:
+    raise Exception("not support dtype, only support float16/float32")
+
 
 def create_kv_cache(config: Qwen2Config, kv_cache_length=1024):
     return np.zeros(
@@ -34,7 +48,7 @@ def create_kv_cache(config: Qwen2Config, kv_cache_length=1024):
             kv_cache_length,
             config.hidden_size // config.num_attention_heads
         ],
-        dtype=np.float16
+        dtype=np_dtype
     )
 
 
