@@ -46,7 +46,7 @@
   python3 ./cli_chat.py --hf_model_dir="download/[你下载的模型路径]"
   ```
 
-- demo展示（演示模型，qwen1.5-0.5chat)
+- demo展示（演示模型，qwen1.5-0.5b-chat）
 ![](./image/qwen1.5_0.5b_chat.gif)
 
 
