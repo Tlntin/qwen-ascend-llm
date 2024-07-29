@@ -65,6 +65,7 @@ def get_soc_version():
         if soc_version is not None:
             break
     assert soc_version is not None, print("soc_version", soc_version)
+    print("SoC Version is ", soc_version)
     return soc_version
 
 

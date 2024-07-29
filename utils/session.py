@@ -66,10 +66,10 @@ class CANNOnnxSession(Session):
         options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
         # options.execution_mode = ort.ExecutionMode.ORT_PARALLEL
         self.llm_session = ort.InferenceSession(
-			config.onnx_model_path,
-			sess_options=options,
-			providers=[
-				(
+            config.onnx_model_path,
+            sess_options=options,
+            providers=[
+                (
                     "CANNExecutionProvider",
                     {
                         "device_id": 0,
@@ -80,9 +80,9 @@ class CANNOnnxSession(Session):
                         "enable_cann_graph": True
                     },
                 ),
-				"CPUExecutionProvider",
-			]
-		)
+                "CPUExecutionProvider",
+            ]
+        )
 
     def run(self, input_ids:np.ndarray):
         seq_len=input_ids.shape[-1]
@@ -131,7 +131,7 @@ class AclSession(Session):
             end = i + 16 if i+16 < seq_len else seq_len
             cache,mask,pos_ids = self.kv_cache.get_inputs(16)
             self.input_ids[0:end-i] = input_ids[i:end]
-            result:List[np.ndarray] = self.model.inference([self.input_ids,pos_ids,mask,cache])
+            result:List[np.ndarray] = self.model.inference([self.input_ids, mask, pos_ids, cache])
             self.kv_cache.update(end-i,result[1])
             logits.append(result[0][0:end-i].reshape(1,-1))
         return [np.concatenate(logits).reshape(1,1,-1)]
@@ -140,12 +140,17 @@ class AclSession(Session):
         self.run_times += 1     
         cache, mask, pos_ids = self.kv_cache.get_inputs(1)
         result:List[np.ndarray] = self.model.inference(
-                [input_ids, pos_ids, mask, cache]
+                [input_ids, mask, pos_ids, cache]
             )
-        # new_kv_cache = result[1]
-        # print(" == Debug == ")
-        # print("new_kv_cache: shape", new_kv_cache.shape)
-        # print("new_kv_cache: mean: ", new_kv_cache.astype(np.float32).mean().item())
-        # print("new_kv_cache: max: ", new_kv_cache.astype(np.float32).max().item())
+        # if self.run_times <= 2:
+        #     print(" == Debug == ")
+        #     logits = result[0]
+        #     new_kv_cache = result[1]
+        #     print("logits shape: ", logits.shape)
+        #     print("logits mean: ", logits.astype(np.float32).mean().item())
+        #     print("logits max: ", logits.astype(np.float32).max().item())
+        #     print("new_kv_cache: shape", new_kv_cache.shape)
+        #     print("new_kv_cache: mean: ", new_kv_cache.astype(np.float32).mean().item())
+        #     print("new_kv_cache: max: ", new_kv_cache.astype(np.float32).max().item())
         self.kv_cache.update(1,result[1])
         return result[0].reshape(1,1,-1)

@@ -46,12 +46,14 @@
   python3 ./cli_chat.py --hf_model_dir="download/[你下载的模型路径]"
   ```
 
+- demo展示（演示模型，qwen1.5-0.5chat)
+![](./image/qwen1.5_0.5b_chat.gif)
 
 
 ### 当前功能
 - [x] 导出onnx, om模型
-- [x] 模型推理，支持onnx推理。
-- [ ] 模型推理，支持acl推理。
+- [x] 模型推理，支持onnx推理（仅支持CPU）。
+- [x] 模型推理，支持acl推理。
 - [x] 流式传输
 - [ ] 兼容OpenAI的api搭建
 - [ ] 支持functional call

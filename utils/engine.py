@@ -3,9 +3,13 @@ from typing import Dict, List
 import acl
 import numpy as np
 import os
+from functools import reduce
+from operator import mul
 import ctypes
 from config import InferenceConfig
 from ctypes import c_void_p, c_int, c_size_t, c_ulong, c_int64,POINTER
+
+
 ACL_MEM_MALLOC_HUGE_FIRST = 0
 ACL_MEMCPY_HOST_TO_DEVICE = 1
 ACL_MEMCPY_DEVICE_TO_HOST = 2
