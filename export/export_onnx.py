@@ -150,12 +150,12 @@ def export_onnx(
         attention_mask,
         position_ids,
         past_key_values,
-        None,  # inputs_embeds: Optional[torch.FloatTensor] = None,
-        None,  # labels: Optional[torch.LongTensor] = None,
-        True,  # use_cache: Optional[bool] = None,
+        # None,  # inputs_embeds: Optional[torch.FloatTensor] = None,
+        # None,  # labels: Optional[torch.LongTensor] = None,
+        # True,  # use_cache: Optional[bool] = None,
         True,  # output_attentions: Optional[bool] = None,
-        None,  # output_hidden_states
-        False  # return_dict:
+        # None,  # output_hidden_states
+        # False  # return_dict:
     )
     model.eval()
     with torch.no_grad():

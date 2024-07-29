@@ -20,19 +20,19 @@ parser.add_argument(
     '--hf_model_dir',
     type=str,
     help="model and tokenizer path, only support huggingface model",
-    default=os.path.join(project_dir, "download", "Qwen1_5_0_5B_Chat")
+    default=os.path.join(project_dir, "download", "Qwen2-1.5B-Instruct")
 )
 parser.add_argument(
     "--onnx_model_path",
     help="output onnx path",
     type=str,
-    default=os.path.join(onnx_model_dir, "qwen1.5_0.5b_chat.onnx")
+    default=os.path.join(onnx_model_dir, "qwen2_1.5b_chat.onnx")
 )
 parser.add_argument(
     "--om_model_path",
     help=".om model path",
     type=str,
-    default= os.path.join(model_dir, "qwen1.5_0.5b_chat")
+    default= os.path.join(model_dir, "qwen2_1.5b_chat")
 )
 parser.add_argument(
     "--kv_cache_length",
