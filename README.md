@@ -2,6 +2,7 @@
 - 本项目参考了[ascend-llm](https://gitee.com/yinghuo302/ascend-llm)项目。
 - 仅在昇腾310B1做了测试，理论上也兼容其他昇腾芯片。
 - 仅测试了qwen1.5-0.5b-chat与qwen2-1.5b-instruct模型，理论上支持qwen1.5/qwen2系列所有chat/instruct模型。
+- CANN环境安装可以参考[该教程](https://www.hiascend.com/forum/thread-0286155882998311250-1-1.html)。
 
 ### 准备工作
 1. 下载本项目
@@ -12,6 +13,7 @@
 
 
 ### 快速运行
+- 暂无
 
 
 ### 分步骤运行

@@ -125,7 +125,7 @@ outputs = model.forward(
     position_ids,
     now_kv_cache,
     # use_cache=True,
-    output_attentions=True,
+    # output_attentions=True,
 )
 print("==== pytorch runtime ====")
 print("output length: ", len(outputs))
@@ -135,7 +135,6 @@ logits = outputs[0][:, :-1, :]  # 1: -0.10800
 print("logits shape: ", logits.shape)
 print("logits mean: ", logits.float().mean().item())
 print("logits max: ", logits.float().max().item())
-
 new_kv_cache = outputs[1][:, :, :, :, :-1, :]  # 1: 0.0009:
 # new_kv_cache = outputs[1][:, :, :, :, -1:, :]  # 2: 0.003526
 

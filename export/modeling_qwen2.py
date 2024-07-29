@@ -744,8 +744,8 @@ class Qwen2DecoderLayer(nn.Module):
                 "unexpected results may be encountered."
             )
         # self.self_attn = QWEN2_ATTENTION_CLASSES[config._attn_implementation](config, layer_idx)
-        # because npu only support Qwen2Attention
-        self.self_attn = Qwen2Attention(config, layer_idx)
+        self.self_attn = Qwen2SdpaAttention(config, layer_idx)
+        # self.self_attn = Qwen2Attention(config, layer_idx)
         self.mlp = Qwen2MLP(config)
         self.input_layernorm = Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
@@ -986,7 +986,8 @@ class Qwen2Model(Qwen2PreTrainedModel):
             dim=-1
         )
         if padding_mask is not None:
-            full_attention_mask = full_attention_mask * padding_mask.unsqueeze(1)
+            full_attention_mask = full_attention_mask * padding_mask.unsqueeze(
+                1)
         # if not past_length and padding_mask is not None:
         #     full_attention_mask -= padding_mask.unsqueeze(-1) - 1
         full_attention_mask = (full_attention_mask < 0.5).bool()
@@ -1088,17 +1089,24 @@ class Qwen2Model(Qwen2PreTrainedModel):
                 sliding_window=self.config.sliding_window,
             )
         """
-        # copy from chatglm3-6b
+        # copy from chatglm3-6b for onnx export
         full_attention_mask = self.get_masks(
             input_ids,
             past_key_values,
             attention_mask,
         )
-        dtype = past_key_values.dtype
-        device = input_ids.device
-        attention_mask = torch.zeros_like(full_attention_mask, dtype=dtype).to(device)
-        attention_mask.masked_fill_(full_attention_mask, torch.finfo(dtype).min)
+        #  === if use Qwen2Attention ===
+        # dtype = past_key_values.dtype
+        # device = input_ids.device
+        # attention_mask = torch.zeros_like(full_attention_mask, dtype=dtype).to(device)
+        # attention_mask.masked_fill_(full_attention_mask, torch.finfo(dtype).min)
+
+        # == if use Qwen2SdpaAttention ===
+        # copy from chatglm3-6b
+        attention_mask = ~full_attention_mask
+
         hidden_states = inputs_embeds
+
 
         # decoder layers
         # all_hidden_states = () if output_hidden_states else None
