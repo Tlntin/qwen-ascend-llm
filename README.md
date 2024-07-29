@@ -37,15 +37,15 @@
   python3 export/change_node.py \
     --input_model_path="./output/onnx/qwen2_1.5b_chat.onnx" \
     --output_model_path="./output/onnx2/qwen2_1.5b_chat.onnx"
-  cd ..
   ```
 
-4. 转onnx为om模型, 将修改后的onnx利用atc命令导出到onnx，注意此处的om_model_path不带`.om`后缀，运行过程可能会有一些警告，或者子图融合报错，只要结果是提示`success`就说明没啥问题。
+4. 转onnx为om模型, 将修改后的onnx利用atc命令导出到onnx，**注意此处的om_model_path不带`.om`后缀**。运行过程可能会有一些警告，或者子图融合报错，只要结果是提示`success`就说明没啥问题。kv_cache_length长度和第一步导出onnx时的长度保持一致。
   ```bash
   python3 export/onnx2om.py \
     --hf_model_dir="./download/Qwen2-1.5B-Instruct" \
     --onnx_model_path="./output/onnx2/qwen2_1.5b_chat.onnx" \
-    --om_model_path="./output/model/qwen2_1.5b_chat"
+    --om_model_path="./output/model/qwen2_1.5b_chat" \
+    --kv_cache_length=1024
   ```
 
 
