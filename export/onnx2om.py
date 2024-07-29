@@ -73,7 +73,8 @@ model_config = Qwen2Config.from_pretrained(args.hf_model_dir)
 num_hidden_layers = model_config.num_hidden_layers
 num_key_value_heads = model_config.num_key_value_heads
 hidden_size = model_config.hidden_size
-per_head_dim = hidden_size // num_key_value_heads
+num_attention_heads = model_config.num_attention_heads
+per_head_dim = hidden_size // num_attention_heads
 kv_cache_length = args.kv_cache_length
 batch_size = 1
 seq_len = 1
@@ -104,13 +105,9 @@ command_lines = [
 ]
 print("============ run command ==============")
 print(" ".join(command_lines))
-print("============ run command ==============")
-result2 = subprocess.run(
+print("=======================================")
+subprocess.run(
     " ".join(command_lines),
     shell=True,
-    capture_output=True,
-    text=True
+    check=True,
 )
-print("output: ", result2.stdout)
-if result2.stderr:
-    print("error: ", result2.stdout)

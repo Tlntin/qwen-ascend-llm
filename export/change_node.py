@@ -3,6 +3,8 @@ import onnx
 import onnx.helper as helper
 from onnx import TensorProto
 from tqdm import tqdm
+import argparse
+
 
 now_dir = os.path.dirname(os.path.abspath(__file__))
 project_dir = os.path.dirname(now_dir)
@@ -18,12 +20,25 @@ if not os.path.exists(new_onnx_dir):
 
 now_dir = os.path.dirname(os.path.abspath(__file__))
 project_dir = os.path.dirname(now_dir)
-model_name = "qwen1.5_0.5b_chat.onnx"
+model_name = "qwen2_1.5b_chat.onnx"
 
-src_model_path = os.path.join(old_onnx_dir, model_name)
-target_model_path = os.path.join(new_onnx_dir, model_name)
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    '--input_model_path',
+    type=str,
+    help="raw onnx model convert by pytroch",
+    default=os.path.join(old_onnx_dir, model_name)
+)
+parser.add_argument(
+    "--output_model_path",
+    help="output onnx model path",
+    type=str,
+    default=os.path.join(new_onnx_dir, model_name)
+)
 
-model = onnx.load(src_model_path)
+args = parser.parse_args()
+
+model = onnx.load(args.input_model_path)
 new_nodes = []
 
 for node in tqdm(model.graph.node, desc="replace node..."):
@@ -63,5 +78,5 @@ new_model = helper.make_model(new_graph, producer_name=model.producer_name,opset
 # new_model.ir_version = model.ir_version
 # new_model.opset_import = model.opset_import
 # new_model.metadata_props = model.metadata_props
-print("will save model in ", target_model_path)
-onnx.save(new_model, target_model_path, save_as_external_data=True)
+print("will save model in ", args.output_model_path)
+onnx.save(new_model, args.output_model_path, save_as_external_data=True)

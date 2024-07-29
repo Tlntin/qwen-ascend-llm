@@ -25,6 +25,11 @@ if not os.path.exists(output_dir):
 onnx_model_dir = os.path.join(output_dir, "onnx")
 if not os.path.exists(onnx_model_dir):
     os.mkdir(onnx_model_dir)
+if len(os.listdir(onnx_model_dir)) > 0:
+    print("found some file in {}, will clear it".format(onnx_model_dir))
+    for temp_file in os.listdir(onnx_model_dir):
+        temp_path = os.path.join(onnx_model_dir, temp_file)
+        os.remove(temp_path)
 
 
 def parser_arguments():
@@ -47,13 +52,13 @@ def parser_arguments():
         '--hf_model_dir',
         type=str,
         help="model and tokenizer path, only support huggingface model",
-        default=os.path.join(project_dir, "download", "Qwen1_5_0_5B_Chat")
+        default=os.path.join(project_dir, "download", "Qwen2-1.5B-Instruct")
     )
     parser.add_argument(
         "--onnx_model_path",
         help="output onnx path",
         type=str,
-        default=os.path.join(onnx_model_dir, "qwen1.5_0.5b_chat.onnx")
+        default=os.path.join(onnx_model_dir, "qwen2_1.5b_chat.onnx")
     )
     parser.add_argument(
         "--kv_cache_length",
@@ -194,9 +199,10 @@ if __name__ == "__main__":
     test_model_config.torch_dtype = "float16"
     test_model_config.save_pretrained(args.hf_model_dir)
     num_hidden_layers = test_model_config.num_hidden_layers
+    num_attention_heads = test_model_config.num_attention_heads
     num_key_value_heads = test_model_config.num_key_value_heads
     hidden_size = test_model_config.hidden_size
-    per_head_dim = hidden_size // num_key_value_heads
+    per_head_dim = hidden_size // num_attention_heads
     print("new model config save ok in ", args.hf_model_dir)
     print("begin export onnx")
     export_onnx(

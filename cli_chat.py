@@ -11,7 +11,7 @@ parser.add_argument(
     '--hf_model_dir',
     type=str,
     help="model and tokenizer path, only support huggingface model",
-    default=os.path.join(project_dir, "download", "Qwen1_5_0_5B_Chat")
+    default=os.path.join(project_dir, "download", "Qwen2-1.5B-Instruct")
 )
 parser.add_argument(
     "--session_type",
@@ -24,13 +24,13 @@ parser.add_argument(
     '--onnx_model_path',
     type=str,
     help="onnx_model_path",
-    default=os.path.join(project_dir, "output", "onnx", "qwen1.5_0.5b_chat.onnx")
+    default=os.path.join(project_dir, "output", "onnx", "qwen2_1.5b_chat.onnx")
 )
 parser.add_argument(
     "--om_model_path",
     help="mindspore model path",
     type=str,
-    default= os.path.join(project_dir, "output", "model", "qwen1.5_0.5b_chat.om")
+    default= os.path.join(project_dir, "output", "model", "qwen2_1.5b_chat.om")
 )
 parser.add_argument(
     "--max_input_length",

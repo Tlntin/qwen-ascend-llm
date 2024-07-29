@@ -329,6 +329,7 @@ class Qwen2Attention(nn.Module):
         return attn_output, attn_weights, out_cache
 
 
+'''
 class Qwen2FlashAttention2(Qwen2Attention):
     """
     Qwen2 flash attention module, following Qwen2 attention module. This module inherits from `Qwen2Attention`
@@ -629,6 +630,7 @@ class Qwen2FlashAttention2(Qwen2Attention):
             (cu_seqlens_q, cu_seqlens_k),
             (max_seqlen_in_batch_q, max_seqlen_in_batch_k),
         )
+'''
 
 
 # Copied from transformers.models.llama.modeling_llama.LlamaSdpaAttention with Llama->Qwen2
@@ -676,14 +678,19 @@ class Qwen2SdpaAttention(Qwen2Attention):
 
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
-            kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+            # kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+            kv_seq_len += past_key_value[self.layer_idx].shape[3]
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
 
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
         if past_key_value is not None:
-            cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
-            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+            # cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
+            # key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+            cache_key = past_key_value[self.layer_idx][0]
+            cache_value = past_key_value[self.layer_idx][1]
+            key_states = torch.cat((cache_key, key_states), dim=2)
+            value_states = torch.cat((cache_value, value_states), dim=2)
 
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
@@ -722,7 +729,7 @@ class Qwen2SdpaAttention(Qwen2Attention):
 
 QWEN2_ATTENTION_CLASSES = {
     "eager": Qwen2Attention,
-    "flash_attention_2": Qwen2FlashAttention2,
+    # "flash_attention_2": Qwen2FlashAttention2,
     "sdpa": Qwen2SdpaAttention,
 }
 
