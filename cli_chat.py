@@ -1,4 +1,5 @@
 import sys
+import math
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 from config import InferenceConfig
@@ -33,10 +34,25 @@ parser.add_argument(
     default= os.path.join(project_dir, "output", "model", "qwen2_1.5b_chat.om")
 )
 parser.add_argument(
+    "--max_batch",
+    help="max batch",
+    type=int,
+    default=1,
+)
+parser.add_argument(
     "--max_input_length",
     help="max input length",
     type=int,
     default=512,
+)
+parser.add_argument(
+    "--max_prefill_length",
+    help="max prefill length in first inference. "
+        "Attention max_prefill_length + max_output_length <= kv_cache_length. "
+        "the number must by 2^xx, like 1, 2, 4, 8, 16, 32, 64, 128, 256... "
+        "Note! The higher this number, the longer it will take to compile.",
+    type=int,
+    default=8,
 )
 
 parser.add_argument(
@@ -47,14 +63,18 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
+max_prefill_log2 = int(math.log2(args.max_prefill_length))
+max_prefill_length = 2 ** max_prefill_log2 
 config = InferenceConfig(
     hf_model_dir=args.hf_model_dir,
     om_model_path=args.om_model_path,
     onnx_model_path=args.onnx_model_path,
     session_type=args.session_type,
+    max_batch=args.max_batch,
     max_output_length=args.max_output_length,
     max_input_length=args.max_input_length,
     kv_cache_length=args.max_output_length,
+    max_prefill_length=max_prefill_length,
 )
 infer_engine=Inference(config)
 

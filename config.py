@@ -13,8 +13,10 @@ class InferenceConfig:
         sampling_method: str = "top_k",
         sampling_value: float = 10,
         temperature: float = 0.7,
+        max_batch: int = 1,
         max_input_length: int = 512, # 输入长度的最大数值
         max_output_length: int = 1024, # 输出长度的最大值
+        max_prefill_length: int = 1, # prefile阶段，单次最大推理长度
         kvcache_method: str = "fixsize", # kv_cache类型，支持basic,fixsize,streamllm,H2O四种，具体可以去kvcache.py查看
         kv_cache_length: int = 1024, # kvcache的最大长度
         cache_format: str = 'huggingface-tensor', # kv_cache的格式
@@ -32,6 +34,7 @@ class InferenceConfig:
         self.sampling_method = sampling_method
         self.sampling_value = sampling_value
         self.temperature = temperature
+        self.max_batch = max_batch
         self.max_input_length = max_input_length
         self.max_output_length = max_output_length
         self.kvcache_method = kvcache_method
@@ -47,8 +50,10 @@ class InferenceConfig:
         self.past_key_value_shape = (
             self.num_hidden_layers,
             2,
-            1,
+            self.max_batch,
             self.num_key_value_heads,
             self.kv_cache_length,
             self.per_head_dim
         )
+        self.max_prefill_length = max_prefill_length
+        self.vocab_size = self.model_config.vocab_size

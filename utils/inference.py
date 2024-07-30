@@ -145,7 +145,12 @@ class Inference:
         max_output_len = self.max_output_length - input_length
         for i in range(max_output_len):
             logits = self.session.run(input_ids)[0]
-            input_ids = self.sample_logits(logits[0][-1:], self.sampling_method, self.sampling_value, self.temperature)
+            input_ids = self.sample_logits(
+                logits[0][-1:],
+                self.sampling_method,
+                self.sampling_value,
+                self.temperature
+            )
             input_ids = input_ids.reshape(1, -1)
             if i == 0:
                 first_token_latency = time.time() - start

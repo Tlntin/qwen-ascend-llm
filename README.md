@@ -41,32 +41,38 @@
     --output_model_path="./output/onnx2/qwen2_1.5b_chat.onnx"
   ```
 
-4. 转onnx为om模型, 将修改后的onnx利用atc命令导出到onnx，**注意此处的om_model_path不带`.om`后缀**。运行过程可能会有一些警告，或者子图融合报错，只要结果是提示`success`就说明没啥问题。kv_cache_length长度和第一步导出onnx时的长度保持一致。
+4. 转onnx为om模型, 将修改后的onnx利用atc命令导出到onnx，**注意此处的om_model_path不带`.om`后缀**。运行过程可能会有一些警告，或者子图融合报错，只要结果是提示`success`就说明没啥问题。kv_cache_length长度和第一步导出onnx时的长度保持一致。`--max_prefill_length`为prefill阶段，单次能处理的最大长度，该数值越长则越能降低首字延迟，但是相应的onnx转om的时间也会变长。设置该数值时，一般为2的指数，例如2、4、8、16等等，推理时会利用递归自动匹配合适的prefill长度，例如输入12，会匹配[8, 4]。当前默认数值为8，如果设置为1，则不会开启动态shape推理功能。
   ```bash
   python3 export/onnx2om.py \
     --hf_model_dir="./download/Qwen2-1.5B-Instruct" \
     --onnx_model_path="./output/onnx2/qwen2_1.5b_chat.onnx" \
     --om_model_path="./output/model/qwen2_1.5b_chat" \
-    --kv_cache_length=1024
+    --kv_cache_length=1024 \
+    --max_prefill_length=8
   ```
 
 
 ##### 步骤2：运行模型
-- 使用下面的命令直接运行模型
+- 使用下面的命令直接运行模型，`--max_prefill_length`需要和上面编译的时候使用的数值相同。
   ```bash
   python3 ./cli_chat.py \
     --hf_model_dir="./download/Qwen2-1.5B-Instruct" \
-    --om_model_path="./output/model/qwen2_1.5b_chat.om"
+    --om_model_path="./output/model/qwen2_1.5b_chat.om" \
+    --max_prefill_length=8
   ```
 
-- demo展示（演示模型，qwen1.5-0.5b-chat）
+- demo展示1（演示模型，qwen1.5-0.5b-chat，未开启动态shape推理）
 ![](./image/qwen1.5_0.5b_chat.gif)
+
+- demo展示2（演示模型，qwen2-1.5b-instruct，开启动态shape推理, max_prefill_length=8）
+![](./image/qwen2-1.5b-instruct.gif)
 
 
 ### 当前功能
 - [x] 导出onnx, om模型
 - [x] 模型推理，支持onnx推理（仅支持CPU）。
-- [x] 模型推理，支持acl推理。
+- [x] 模型推理，支持CANN推理。
+- [x] CANN推理时使用动态shape推理以降低首字延迟。
 - [x] 流式传输
 - [ ] 兼容OpenAI的api搭建
 - [ ] 支持functional call

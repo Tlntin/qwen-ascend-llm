@@ -77,6 +77,8 @@ class ACLModel:
         self.callback_interval = 1
         self.exit_flag = False
         self.kv_cache = None
+        self.max_batch = config.max_batch
+        self.kv_cache_length = config.kv_cache_length
         self.input_dataset, self.output_dataset = None, None
         self.inputs:List[Dict[str,]] = []
         self.outputs:List[Dict[str,]] =  []
@@ -189,47 +191,125 @@ class ACLModel:
             ret = acl.rt.free_host(item["buffer_host"])
         ret = acl.mdl.destroy_dataset(self.output_dataset)
 
-    def inference(self,data) -> List[np.ndarray]:
+    def inference(self, input_data_list: List[np.ndarray], seq_length=1, is_dynamic=False) -> List[np.ndarray]:
         """
         执行推理，同步方式
         Args:
-            data (_type_): _description_
+            input_data_list (_type_): _description_
+            seq_length: 推理长度
 
         Returns:
             List[np.ndarray]: _description_
         """
         start = time.time()
         acl.rt.set_context(self.context)
-        for i in range(len(data)):
+        for i in range(len(input_data_list)):
             if i == 3:
-                pass
+                continue
             else:
-                bytes_data = data[i].tobytes()
+                input_data = input_data_list[i]
+                input_size = input_data.size
+                input_itemsize = input_data.itemsize
+                bytes_data = input_data.tobytes()
                 np_ptr = acl.util.bytes_to_ptr(bytes_data)
+                if is_dynamic:
+                    input_copy_size = input_size * input_itemsize
+                else:
+                    input_copy_size = self.inputs[i]["size"]
                 ret = acl.rt.memcpy(
                     self.inputs[i]["buffer"],
                     self.inputs[i]["size"],
                     np_ptr,
-                    self.inputs[i]["size"],
+                    input_copy_size,
                     ACL_MEMCPY_HOST_TO_DEVICE
                 )
-                check_ret("memcpy", ret)
+                check_ret("memcpy input", ret)
+        output_sizes = []
+        if is_dynamic:
+            # link https://www.hiascend.com/doc_center/source/zh/canncommercial/80RC1/apiref/appdevgapi/aclpythondevg_01_0159.html
+            index, ret = acl.mdl.get_input_index_by_name(
+                self.model_desc, "ascend_mbatch_shape_data"
+            )
+            check_ret("get_input_index_by_name", ret)
+            dynamic_dims = [
+                # input_ids
+                self.max_batch,
+                seq_length, 
+                # attention_mask
+                self.max_batch,
+                seq_length + self.kv_cache_length, 
+                # position_ids
+                self.max_batch,
+                seq_length  
+            ]
+            dynamic_dims += self.config.past_key_value_shape
+            # will set dynamic input shape
+            ret = acl.mdl.set_input_dynamic_dims(
+                self.model_id,
+                self.input_dataset,
+                index,
+                {
+                    'dimCount': len(dynamic_dims),
+                    'name': '',
+                    'dims': dynamic_dims
+                }
+            )
+            check_ret("set_iniput_dynamic_dims", ret)
+            output_itemsize1 = np.dtype(self.outputs[0]["dtype"]).itemsize
+            output_itemsize2 = np.dtype(self.outputs[1]["dtype"]).itemsize
+            logits_size = self.max_batch * seq_length * self.config.vocab_size
+            logits_itemsize = logits_size * output_itemsize1
+            new_kv_cache_size = (
+                self.config.num_hidden_layers \
+                * 2 \
+                * self.max_batch \
+                * self.config.num_key_value_heads \
+                * seq_length \
+                * self.config.per_head_dim \
+            )
+            new_kv_cache_itemsize = new_kv_cache_size * output_itemsize2
+            output_sizes = [logits_size, new_kv_cache_size]
+            output_itemsizes = [logits_itemsize, new_kv_cache_itemsize]
+        logits_shape = [self.max_batch, seq_length, self.config.vocab_size]
+        new_kv_cache_shape = [
+            self.config.num_hidden_layers,
+            2,
+            self.max_batch,
+            self.config.num_key_value_heads,
+            seq_length,
+            self.config.per_head_dim
+        ]
+        output_shapes = [logits_shape, new_kv_cache_shape]
+
         ret = acl.mdl.execute(
             self.model_id,
             self.input_dataset,
             self.output_dataset
         )
+        check_ret("model_execute", ret)
         inference_result = []
-        for out in self.outputs:
+
+        for output_idx, out in enumerate(self.outputs):
+            if is_dynamic:
+                output_itemsize = output_itemsizes[output_idx]
+                output_size = output_sizes[output_idx]
+            else:
+                output_itemsize = out["size"]
+                output_size = output_itemsize // np.dtype(out["dtype"]).itemsize
             ret = acl.rt.memcpy(
                 out['buffer_host'],
                 out["size"],
                 out["buffer"],
-                out["size"],
+                output_itemsize,
                 ACL_MEMCPY_DEVICE_TO_HOST
             )
+            check_ret("memcpy output", ret)
             bytes_out = acl.util.ptr_to_bytes(out['buffer_host'], out["size"])
-            out_data = np.frombuffer(bytes_out, dtype=out['dtype'])
+            out_data = np.frombuffer(
+                bytes_out,
+                dtype=out['dtype'],
+                count=output_size,
+            ).reshape(output_shapes[output_idx])
             inference_result.append(out_data)
         return inference_result
     

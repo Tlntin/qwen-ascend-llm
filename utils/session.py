@@ -2,6 +2,7 @@ from config import InferenceConfig
 from utils.kvcache import create_kv_cache
 import numpy as np
 from typing import List
+import math
 import time
 import sys
 from utils.engine import ACLModel, init_resource, destroy_resource
@@ -112,18 +113,77 @@ class AclSession(Session):
         self.device_id = config.device_id
         self.context = init_resource(self.device_id)
         self.model = ACLModel(config, self.context)
+        self.max_batch = config.max_batch
         self.input_ids = np.zeros((1,16),dtype=np.int64)
         self.kv_cache.kv_cache = self.model.kv_cache
+        self.max_prefill_length = config.max_prefill_length
+        self.prefill_log2_number = int(math.log2(self.max_prefill_length))
+        self.prefill_log2_list = list(range(self.prefill_log2_number, -1, -1))
+        self.prefill_log2_list = [2**index for index in self.prefill_log2_list]
+        
     
     def __del__(self):
         destroy_resource(self.device_id, self.context)
+    
+    def decompose_number(self, n, start_index=0):
+        """
+        将数字n分解成若干个2的指数的和，并返回这些2的指数构成的列表。
+        参数:
+        n -- 要分解的数字
+        返回:
+        分解后的列表，例如 [8, 4]
+        """
+        if n == 0:
+            return []
+    
+        for i in range(start_index, self.prefill_log2_number + 1):
+            power = self.prefill_log2_list[i]
+            if power <= n:
+                return [power] + self.decompose_number(n - power, i)
+        return []
+    
     def run(self, input_ids: np.ndarray):
         seq_len = input_ids.shape[-1]
         logits = None
-        for i in range(seq_len):
-            logits = self.run_one(input_ids[:,i])
+        is_dynamic = bool(self.max_prefill_length > 1)
+        # dynamic inference
+        if is_dynamic:
+            seq_list = self.decompose_number(seq_len)
+            start_i = 0
+            for seq in seq_list:
+                end_i = start_i + seq
+                logits = self.run_some(
+                    input_ids[:, start_i: end_i],
+                    seq,
+                    is_dynamic
+                )
+                start_i += seq
+        # static inference
+        else:
+            for i in range(seq_len):
+                logits = self.run_some(input_ids[:,i])
         return [logits]
     
+    def run_some(self, input_ids: np.ndarray, seq_length: int = 1, is_dynamic: bool = False):
+        self.run_times += seq_length 
+        cache, mask, pos_ids = self.kv_cache.get_inputs(seq_length)
+        result:List[np.ndarray] = self.model.inference(
+                [input_ids, mask, pos_ids, cache], seq_length, is_dynamic
+            )
+        # if self.run_times <= 20:
+        #     print(" === Debug === ")
+        #     print("run times: ", self.run_times) 
+        #     logits = result[0]
+        #     new_kv_cache = result[1]
+        #     print("logits shape: ", logits.shape)
+        #     print("logits mean: ", logits.astype(np.float32).mean().item())
+        #     print("logits max: ", logits.astype(np.float32).max().item())
+        #     print("new_kv_cache: shape", new_kv_cache.shape)
+        #     print("new_kv_cache: mean: ", new_kv_cache.astype(np.float32).mean().item())
+        #     print("new_kv_cache: max: ", new_kv_cache.astype(np.float32).max().item())
+        self.kv_cache.update(seq_length, result[1])
+        return result[0].reshape(self.max_batch, seq_length,-1)
+
     def run_all_logits(self, input_ids: np.ndarray):
         seq_len, i = input_ids.shape[-1], 0
         logits = []
@@ -135,22 +195,3 @@ class AclSession(Session):
             self.kv_cache.update(end-i,result[1])
             logits.append(result[0][0:end-i].reshape(1,-1))
         return [np.concatenate(logits).reshape(1,1,-1)]
-    
-    def run_one(self, input_ids: np.ndarray):
-        self.run_times += 1     
-        cache, mask, pos_ids = self.kv_cache.get_inputs(1)
-        result:List[np.ndarray] = self.model.inference(
-                [input_ids, mask, pos_ids, cache]
-            )
-        # if self.run_times <= 2:
-        #     print(" == Debug == ")
-        #     logits = result[0]
-        #     new_kv_cache = result[1]
-        #     print("logits shape: ", logits.shape)
-        #     print("logits mean: ", logits.astype(np.float32).mean().item())
-        #     print("logits max: ", logits.astype(np.float32).max().item())
-        #     print("new_kv_cache: shape", new_kv_cache.shape)
-        #     print("new_kv_cache: mean: ", new_kv_cache.astype(np.float32).mean().item())
-        #     print("new_kv_cache: max: ", new_kv_cache.astype(np.float32).max().item())
-        self.kv_cache.update(1,result[1])
-        return result[0].reshape(1,1,-1)

@@ -1,6 +1,7 @@
 import os
 import subprocess
 import argparse
+import math
 from transformers.models.qwen2 import Qwen2Config
 
 now_dir = os.path.dirname(os.path.abspath(__file__))
@@ -33,6 +34,21 @@ parser.add_argument(
     help=".om model path",
     type=str,
     default= os.path.join(model_dir, "qwen2_1.5b_chat")
+)
+parser.add_argument(
+    "--max_batch",
+    help="max batch",
+    type=int,
+    default=1,
+)
+parser.add_argument(
+    "--max_prefill_length",
+    help="max prefill length in first inference. "
+        "Attention max_prefill_length + max_output_length <= kv_cache_length. "
+        "the number must by 2^xx, like 1, 2, 4, 8, 16, 32, 64, 128, 256... "
+        "Note! The higher this number, the longer it will take to compile.",
+    type=int,
+    default=8,
 )
 parser.add_argument(
     "--kv_cache_length",
@@ -68,7 +84,7 @@ def get_soc_version():
     print("SoC Version is ", soc_version)
     return soc_version
 
-
+max_batch = args.max_batch
 model_config = Qwen2Config.from_pretrained(args.hf_model_dir)
 num_hidden_layers = model_config.num_hidden_layers
 num_key_value_heads = model_config.num_key_value_heads
@@ -76,19 +92,44 @@ hidden_size = model_config.hidden_size
 num_attention_heads = model_config.num_attention_heads
 per_head_dim = hidden_size // num_attention_heads
 kv_cache_length = args.kv_cache_length
-batch_size = 1
-seq_len = 1
-all_len = seq_len + kv_cache_length
-attention_mask_shape = [batch_size, all_len]
+max_prefill_log2 = int(math.log2(args.max_prefill_length))
+max_prefill_length = 2 ** max_prefill_log2 
+prefill_length_range = list(range(0, max_prefill_log2 + 1))
+prefill_length_range = [2 ** idx for idx in prefill_length_range]
+assert (max_prefill_length < kv_cache_length), \
+    print("max_input_length max be smaller than kv_cache_length, because max_input_length + max_output_length <= kv_cache")
+input_ids_length_range = prefill_length_range
+attention_length_range = [
+    length + kv_cache_length
+    for length in prefill_length_range
+]
+position_length_range = prefill_length_range
+input_ids_shape = [
+    f"1~{max_batch}" if max_batch > 1 else "1",
+    "-1" if max_prefill_length > 1 else "1",
+]
+attention_mask_shape = [
+    f"1~{max_batch}" if max_batch > 1 else "1",
+    "-1" if max_prefill_length > 1 else str(1 + kv_cache_length)
+]
+position_ids_shape = [
+    f"1~{max_batch}" if max_batch > 1 else "1",
+    "-1" if max_prefill_length > 1 else "1"
+]
+dynamic_dims = []
+for dynamic_dim in zip(
+    input_ids_length_range, attention_length_range, position_length_range
+):
+    dynamic_dim = [str(dim) for dim in dynamic_dim]
+    dynamic_dims.append(",".join(dynamic_dim))
 past_key_values_shape = [
     num_hidden_layers,
     2,
-    1,
+    f"1~{max_batch}" if max_batch > 1 else "1",
     num_key_value_heads,
     kv_cache_length,
     per_head_dim
 ]
-attention_mask_shape = [str(x) for x in attention_mask_shape]
 past_key_values_shape = [str(x) for x in past_key_values_shape]
 
 command_lines = [
@@ -99,10 +140,17 @@ command_lines = [
     "--soc_version=Ascend{}".format(get_soc_version()),
     "--precision_mode=must_keep_origin_dtype",
     "--input_format=ND",
-    '--input_shape="input_ids:1,1;attention_mask:{};position_ids:1,1;past_key_values:{}"'.format(
-       ",".join(attention_mask_shape), ",".join(past_key_values_shape)
-    )
+    '--input_shape="input_ids:{};attention_mask:{};position_ids:{};past_key_values:{}"'.format(
+        ",".join(input_ids_shape),
+        ",".join(attention_mask_shape),
+        ",".join(position_ids_shape),
+        ",".join(past_key_values_shape)
+    ),
 ]
+if max_prefill_length > 1:
+    command_lines.append(
+        "--dynamic_dims \"{}\"".format(";".join(dynamic_dims))
+    )
 print("============ run command ==============")
 print(" ".join(command_lines))
 print("=======================================")
