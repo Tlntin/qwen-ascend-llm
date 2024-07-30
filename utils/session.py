@@ -7,12 +7,15 @@ import time
 import sys
 from utils.engine import ACLModel, init_resource, destroy_resource
 import onnxruntime as ort
+from tqdm import tqdm, trange
+
 
 class Session:
     def __init__(self, config: InferenceConfig) -> None:
         self.kv_cache = create_kv_cache(config)
         self.run_times = 0
-    def run(self,input_ids:np.ndarray):
+
+    def run(self,input_ids:np.ndarray, show_progress: bool = False):
         pass
     
     @staticmethod
@@ -46,7 +49,7 @@ class OnnxSession(Session):
             ],
         )
 
-    def run(self, input_ids:np.ndarray):
+    def run(self, input_ids:np.ndarray, show_progress=False):
         seq_len=input_ids.shape[-1]
         cache, mask, pos_ids = self.kv_cache.get_inputs(seq_len)
         result = self.llm_session.run(None,{
@@ -142,29 +145,42 @@ class AclSession(Session):
                 return [power] + self.decompose_number(n - power, i)
         return []
     
-    def run(self, input_ids: np.ndarray):
+    def run(self, input_ids: np.ndarray, show_progress:bool=False):
         seq_len = input_ids.shape[-1]
         logits = None
         is_dynamic = bool(self.max_prefill_length > 1)
         # dynamic inference
         if is_dynamic:
             seq_list = self.decompose_number(seq_len)
+            if show_progress:
+               seq_list = tqdm(seq_list, desc="prefill") 
             start_i = 0
             for seq in seq_list:
                 end_i = start_i + seq
                 logits = self.run_some(
                     input_ids[:, start_i: end_i],
                     seq,
-                    is_dynamic
+                    is_dynamic,
                 )
                 start_i += seq
+                # if show_progress:
+                #     seq_list.update(seq)
         # static inference
         else:
-            for i in range(seq_len):
+            if show_progress:
+                idx_list = trange(seq_len, desc="prefill")
+            else:
+                idx_list = range(seq_len)
+            for i in idx_list:
                 logits = self.run_some(input_ids[:,i])
         return [logits]
     
-    def run_some(self, input_ids: np.ndarray, seq_length: int = 1, is_dynamic: bool = False):
+    def run_some(
+        self,
+        input_ids: np.ndarray,
+        seq_length: int = 1,
+        is_dynamic: bool = False
+    ):
         self.run_times += seq_length 
         cache, mask, pos_ids = self.kv_cache.get_inputs(seq_length)
         result:List[np.ndarray] = self.model.inference(

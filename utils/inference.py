@@ -7,6 +7,7 @@ from enum import Enum
 from threading import Lock
 from utils.session import Session
 from config import InferenceConfig
+from tqdm import trange, tqdm
 
 
 
@@ -114,21 +115,29 @@ class Inference:
         self,
         prompt,
         history=None,
-        system_prompt: str="You are a helpful assistant.",
+        sampling_config: dict = {},
+        system_prompt: str = "You are a helpful assistant.",
+        max_new_tokens: int = 512,
+        do_speed_test: bool = False,
+        show_progress: bool = False,
     ):
         if history is None:
-            history = []    
-        if len(history) == 0:
-            history = [{"role": "system", "content": system_prompt}]
+            history = [] 
+        sampling_value = sampling_config.get("sampling_value", self.sampling_value)
+        temperature = sampling_config.get("sampling_value", self.temperature)
+        messages = [{"role": "system", "content": system_prompt}]
         # print("prompt: ", prompt)
         with self.lock:
             self.state['isEnd'],self.state['message'] = False,""   
         if prompt == "":
-            return    
-        history.append({"role": "user", "content": prompt})
+            return
+        for (use_msg, bot_msg) in history:
+            messages.append({"role": "user", "content": use_msg})
+            messages.append({"role": "assistant", "content": bot_msg})
+        messages.append({"role": "user", "content": prompt})
         # print("history: ", history)
         text = self.tokenizer.apply_chat_template(
-            history,
+            messages,
             tokenize=False,
             add_generation_prompt=True
         )
@@ -139,20 +148,27 @@ class Inference:
         ids_list = []
         text_length = 0
         input_length = input_ids.shape[1]
-        start = time.time()
-        first_token_latency = 0
-        decode_speed = 0
+        if do_speed_test:
+            start = time.time()
+            first_token_latency = 0
+            decode_speed = 0
         max_output_len = self.max_output_length - input_length
-        for i in range(max_output_len):
-            logits = self.session.run(input_ids)[0]
+        max_output_len = min(max_output_len, max_new_tokens)
+        if show_progress:
+            temp_list = trange(max_output_len, desc="decode")
+        else:
+            temp_list = range(max_output_len)
+        for i in temp_list:
+            prefill_show_progress = (i == 0)
+            logits = self.session.run(input_ids, show_progress=prefill_show_progress)[0]
             input_ids = self.sample_logits(
                 logits[0][-1:],
                 self.sampling_method,
-                self.sampling_value,
-                self.temperature
+                sampling_value,
+                temperature
             )
             input_ids = input_ids.reshape(1, -1)
-            if i == 0:
+            if do_speed_test and i == 0:
                 first_token_latency = time.time() - start
             with self.lock:
                 # early stop
@@ -164,17 +180,135 @@ class Inference:
                 # stop_word = is_stop_word_or_prefix(text_out, ["[|Human|]", "[|AI|]"])
                 self.state['message'] = text_out
                 new_text = text_out[text_length: ]
-                # decode_speed =
-                duration = time.time() - start
-                decode_speed = len(ids_list) / duration
-                totol_speed = (input_length + len(ids_list)) / duration
+                if do_speed_test:
+                    duration = time.time() - start
+                    decode_speed = len(ids_list) / duration
+                    totol_speed = (input_length + len(ids_list)) / duration
                 if b"\xef\xbf\xbd" in new_text.encode():
                     continue
                 if len(new_text) > 0:
-                    yield new_text, first_token_latency, decode_speed, totol_speed
+                    if do_speed_test:
+                        yield new_text, first_token_latency, decode_speed, totol_speed
+                    else:
+                        yield new_text
                     text_length = len(text_out)
         with self.lock:
+            self.state['isEnd'] = True
+    
+    def predict(
+        self,
+        prompt,
+        history=None,
+        sampling_config: dict = {},
+        system_prompt: str="You are a helpful assistant.",
+        max_new_tokens: int = 512,
+        show_progress: bool = False,
+    ):
+        if history is None:
+            history = []
+        sampling_value = sampling_config.get("sampling_value", self.sampling_value)
+        temperature = sampling_config.get("sampling_value", self.temperature)
+        messages = [{"role": "system", "content": system_prompt}]
+        # print("prompt: ", prompt)
+        with self.lock:
+            self.state['isEnd'],self.state['message'] = False,""   
+        if prompt == "":
+            return    
+        for (use_msg, bot_msg) in history:
+            messages.append({"role": "user", "content": use_msg})
+            messages.append({"role": "assistant", "content": bot_msg})
+        messages.append({"role": "user", "content": prompt})
+        # print("history: ", history)
+        text = self.tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True
+        )
+        input_ids = self.tokenizer(
+            [text], return_tensors="np"
+        )["input_ids"].astype(np.int64).reshape(1, -1)
+        self.first = False
+        ids_list = []
+        # text_length = 0
+        input_length = input_ids.shape[1]
+        # start = time.time()
+        # first_token_latency = 0
+        # decode_speed = 0
+        max_output_len = self.max_output_length - input_length
+        max_output_len = min(max_output_len, max_new_tokens)
+        if show_progress:
+            temp_list = trange(max_output_len, desc="decode")
+        else:
+            temp_list = range(max_output_len)
+        for i in temp_list:
+            prefill_show_progress = (i == 0)
+            logits = self.session.run(input_ids, show_progress=prefill_show_progress)[0]
+            input_ids = self.sample_logits(
+                logits[0][-1:],
+                self.sampling_method,
+                sampling_value,
+                temperature
+            )
+            input_ids = input_ids.reshape(1, -1)
+            # if i == 0:
+            #     first_token_latency = time.time() - start
+            with self.lock:
+                # early stop
+                if input_ids[0] == self.tokenizer.eos_token_id:
+                    self.state['message'],self.state['isEnd'] = self.tokenizer.decode(ids_list),True
+                    break
+                ids_list.append(input_ids[0].item())
+                # text_out = self.tokenizer.decode(ids_list)
+                # stop_word = is_stop_word_or_prefix(text_out, ["[|Human|]", "[|AI|]"])
+                # self.state['message'] = text_out
+                # decode_speed =
+        with self.lock:
+            self.state['isEnd'] = True
+        text_out = self.tokenizer.decode(ids_list)
+        return text_out
+    
+    def generate(
+        self,
+        input_ids,
+        sampling_config: dict = {},
+        max_new_tokens: int = 512,
+        show_progress: bool = False,
+    ):
+        sampling_value = sampling_config.get("sampling_value", self.sampling_value)
+        temperature = sampling_config.get("sampling_value", self.temperature)
+        self.first = False
+        ids_list = []
+        input_length = input_ids.shape[1]
+        max_output_len = self.max_output_length - input_length
+        max_output_len = min(max_output_len, max_new_tokens)
+        if show_progress:
+            temp_list = trange(max_output_len, desc="decode")
+        else:
+            temp_list = range(max_output_len)
+        for i in temp_list:
+            prefill_show_progress = (i == 0)
+            logits = self.session.run(input_ids, show_progress=prefill_show_progress)[0]
+            input_ids = self.sample_logits(
+                logits[0][-1:],
+                self.sampling_method,
+                sampling_value,
+                temperature
+            )
+            input_ids = input_ids.reshape(1, -1)
+            with self.lock:
+                # early stop
+                if input_ids[0] == self.tokenizer.eos_token_id:
+                    self.state['message'],self.state['isEnd'] = self.tokenizer.decode(ids_list),True
+                    break
+                ids_list.append(input_ids[0].item())
+                text_out = self.tokenizer.decode(ids_list)
+                print("Debug: ", text_out)
+                # stop_word = is_stop_word_or_prefix(text_out, ["[|Human|]", "[|AI|]"])
+                self.state['message'] = text_out
+        with self.lock:
             self.state['isEnd'] = True 
+        text_out = self.tokenizer.decode(ids_list)
+        return text_out
 
     def reset(self):
         self.first = True

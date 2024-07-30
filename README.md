@@ -68,13 +68,30 @@
 ![](./image/qwen2-1.5b-instruct.gif)
 
 
+##### 步骤3：部署兼容OpenAI的api
+- 使用下面的命令直接运行api，`--max_prefill_length`需要和上面编译的时候使用的数值相同。
+  ```bash
+  python3 ./api.py \
+    --hf_model_dir="./download/Qwen2-1.5B-Instruct" \
+    --om_model_path="./output/model/qwen2_1.5b_chat.om" \
+    --max_prefill_length=8
+  ```
+
+- 进入client目录，可以运行里面的文件请求服务端。
+  ```bash
+  # openai_stream_client.py 流式请求，类似打字机效果
+  # openai_normal_client.py 非流式请求，需要等模型推理完再返回
+  # openai_function_call.py 测试function_call
+  ```
+
+
 ### 当前功能
 - [x] 导出onnx, om模型
 - [x] 模型推理，支持onnx推理（仅支持CPU）。
 - [x] 模型推理，支持CANN推理。
 - [x] CANN推理时使用动态shape推理以降低首字延迟。
 - [x] 流式传输
-- [ ] 兼容OpenAI的api搭建
-- [ ] 支持functional call
+- [x] 兼容OpenAI的api搭建
+- [x] 支持functional call
 - [ ] 支持模型量化，如weight only, smooth quant等
 - [ ] 支持Docker快速部署

@@ -3,3 +3,8 @@ onnxruntime==1.18.1
 # onnxruntime-cann==1.18.1
 torch==2.1.0
 torch-npu==2.1.0.post6
+tqdm
+fastapi
+uvicorn
+sse_starlette
+openai
