@@ -13,11 +13,42 @@
 2. 下载qwen1.5/qwen2的模型，选择chat模型或者instruct模型，将其放到download文件夹，仅支持huggingface下载的模型，网络不好的可以用镜像站：https://hf-mirror.com/Qwen
 
 
-### 快速运行
-- 暂无
+### Docker运行相关
+- （可选）构建部署用的docker。需要先参考[该教程](https://www.hiascend.com/forum/thread-0286157793000580492-1-1.html)登录并拉取镜像（建议跑通下面的所有步骤，得到.om文件后再编译docker）。
+  ```bash
+  docker build . -t qwen_ascend_llm
+  ```
+
+- （可选）构建开发用的docker。如果你想用docker来编译运行自定义芯片和自定义模型，可以运行下面的命令来构建镜像。同样的，需要先参考[该教程](https://www.hiascend.com/forum/thread-0286157793000580492-1-1.html)登录并拉取镜像
+  ```bash
+  docker build -f Dockerfile_dev . -t qwen_ascend_llm_dev
+  ```
+
+- 拉取编译好的镜像（仅适配昇腾310B1,例如香橙派AIPro 20T版）镜像内置了一个Qwen2-1.5B-Instruct模型以及对应的.om文件。
+  ```bash
+  docker pull qwen_ascend_llm registry.cn-guangzhou.aliyuncs.com/tlntin/qwen_ascend_llm:v0.0.1_310B_arm64
+  docker tag qwen_ascend_llm registry.cn-guangzhou.aliyuncs.com/tlntin/qwen_ascend_llm:v0.0.1_310B_arm64 qwen_ascend_llm
+  ```
+
+- 启动部署用的容器（如果是开发用的容器，可以参考该脚本稍微修改，比如最底下的`python api.py`命令可以换成`sleep 8640000`让100天内不会关闭，然后加上-v 参数挂载一下download/output目录）。
+  ```bash
+  ./run_container.sh
+  ```
+
+- 查看容器日志，出现`INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)`则代表启动成功。
+  ```bash
+  docker logs qwen_ascend_llm
+  ```
+
+- 调用容器提供的api接口。进入本项目的client目录，可以运行里面的文件请求服务端。
+  ```bash
+  # openai_stream_client.py 流式请求，类似打字机效果
+  # openai_normal_client.py 非流式请求，需要等模型推理完再返回
+  # openai_function_call.py 测试function_call，该功能启用时建议增加max_input_length和kv_cache_length的长度。
+  ```
 
 
-### 分步骤运行
+### 详细运行步骤
 ##### 步骤1：编译模型（以Qwen2-1.5B-Instruct）为例。
 1. 除了上面说的CANN环境安装外，还需额外安装一些python模块。
   ```bash
@@ -58,7 +89,7 @@
   ```
 
 
-##### 步骤2：运行模型
+##### 步骤2：在终端运行模型进行对话
 - 使用下面的命令直接运行模型，`--max_prefill_length`需要和上面编译的时候使用的数值相同。
   ```bash
   python3 ./cli_chat.py \
@@ -101,4 +132,4 @@
 - [x] 兼容OpenAI的api搭建
 - [x] 支持functional call
 - [ ] 支持模型量化，如weight only, smooth quant等
-- [ ] 支持Docker快速部署
+- [x] 支持Docker快速部署
