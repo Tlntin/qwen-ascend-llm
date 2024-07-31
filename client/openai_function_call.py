@@ -5,6 +5,7 @@ import urllib3
 import time
 import random
 import json
+import asyncio
 
 
 urllib3.disable_warnings()
@@ -100,7 +101,8 @@ def get_current_weather(location: str):
     if len(location_data) > 0:
         location_dict = location_data[0]
         city_id = location_dict["id"]
-        weather_res = weather.get_weather_from_api(city_id)
+        # 由于输入长度限制，这里只取一天的天气，有条件的可以自己更改。
+        weather_res = weather.get_weather_from_api(city_id)[:1]
         n_day = len(weather_res)
         return f"查询到最近{n_day}天的天气。" + json.dumps(weather_res, ensure_ascii=False)
     else:
@@ -109,16 +111,18 @@ def get_current_weather(location: str):
 def call_qwen(messages, functions=None):
     # print(messages)
     if functions:
-        response = client.chat.completions.create(
-            model="Qwen", messages=messages, functions=functions
+        return client.chat.completions.create(
+            model="Qwen",
+            messages=messages,
+            functions=functions,
+            temperature=0,
         )
     else:
-        response = client.chat.completions.create(
-            model="Qwen", messages=messages
+        return client.chat.completions.create(
+            model="Qwen",
+            messages=messages,
+            temperature=0
         )
-    # print(response)
-    # print(response.choices[0].message.content)
-    return response
 
 
 def chat(query: str):
@@ -148,6 +152,7 @@ def chat(query: str):
             "content": query,
         }
     ]
+    print("[INFO] Invoke AI and ask if it need to call the plugin.")
     response = call_qwen(messages, functions)
     res = response.choices[0].message
     message_dict = {
@@ -178,19 +183,23 @@ def chat(query: str):
                 had_params = list(function_params.keys())
                 if len(had_params) != len(require_params):
                     raise Exception("ERROR, need to do other fill params")
-                
-
-                response = eval(function_name)(**function_params)
+                print("[INFO] will call funtion {} with params {}".format(
+                    function_name, function_params
+                )) 
+                fun_response = eval(function_name)(**function_params)
+                print("[INFO] call function response is: ", response)
                 message = {
                     "role": "function",
                     "name": function_name,
                 }
-                if len(response) > 0:
-                    message["content"] = response
+                if len(fun_response) > 0:
+                    message["content"] = fun_response
                 else:
                     message["content"] = "未找到任何信息"
                 messages.append(message)
+                print("[INFO] send function response to AI")
                 response = call_qwen(messages, functions)
+                return response
     return response
 
 
@@ -200,6 +209,7 @@ print("=" * 20)
 print("目前已支持天气查询插件")
 print("=" * 20)
 query = "北京天气如何？穿短袖会不会冷？"
-print("用户输入：", query)
-res = chat(query)
-print("回答结果：", res.choices[0].message.content)
+print("User：", query)
+response = chat(query)
+res = response.choices[0].message.content
+print("ChatBot: ", res)

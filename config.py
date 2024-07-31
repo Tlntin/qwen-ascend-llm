@@ -10,8 +10,8 @@ class InferenceConfig:
         onnx_model_path: str,
         session_type: str = "acl", # 支持acl和onnx两种，acl即Ascend C Language
         device_id: int = 0,
-        sampling_method: str = "top_k",
-        sampling_value: float = 10,
+        sampling_method: str = "top_p", # 支持 greedy, top_p, top_k
+        sampling_value: float = 0.8,
         temperature: float = 0.7,
         max_batch: int = 1,
         max_input_length: int = 512, # 输入长度的最大数值

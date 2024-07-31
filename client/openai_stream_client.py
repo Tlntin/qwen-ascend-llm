@@ -14,6 +14,7 @@ while True:
         break
     if prompt == 'clear':
         messages = messages[:1]
+        print("ChatBot: 已清理历史对话信息。")
         continue
     messages.append({"role": "user", "content": prompt})
     response = client.chat.completions.create(

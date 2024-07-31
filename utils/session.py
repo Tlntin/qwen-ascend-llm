@@ -181,6 +181,10 @@ class AclSession(Session):
         seq_length: int = 1,
         is_dynamic: bool = False
     ):
+        # print(
+        #     "self.run_times: ", self.run_times,
+        #     "real kv size: ", self.kv_cache.real_kv_size
+        # )
         self.run_times += seq_length 
         cache, mask, pos_ids = self.kv_cache.get_inputs(seq_length)
         result:List[np.ndarray] = self.model.inference(

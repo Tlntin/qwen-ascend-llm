@@ -124,7 +124,7 @@ class Inference:
         if history is None:
             history = [] 
         sampling_value = sampling_config.get("sampling_value", self.sampling_value)
-        temperature = sampling_config.get("sampling_value", self.temperature)
+        temperature = sampling_config.get("temperature", self.temperature)
         messages = [{"role": "system", "content": system_prompt}]
         # print("prompt: ", prompt)
         with self.lock:
@@ -144,6 +144,8 @@ class Inference:
         input_ids = self.tokenizer(
             [text], return_tensors="np"
         )["input_ids"].astype(np.int64).reshape(1, -1)
+        input_ids = input_ids[:, -self.max_input_length:]
+        print("input_ids shape: ", input_ids.shape)
         self.first = False
         ids_list = []
         text_length = 0
@@ -158,9 +160,20 @@ class Inference:
             temp_list = trange(max_output_len, desc="decode")
         else:
             temp_list = range(max_output_len)
+        prefill_show_progress = False
         for i in temp_list:
-            prefill_show_progress = (i == 0)
-            logits = self.session.run(input_ids, show_progress=prefill_show_progress)[0]
+            if i == 0:
+                if show_progress:
+                    prefill_show_progress = True
+                # reset counter
+                self.session.run_times = 0
+                self.session.kv_cache.real_kv_size = 0
+            else:
+                prefill_show_progress = False
+            logits = self.session.run(
+                input_ids,
+                show_progress=prefill_show_progress
+            )[0]
             input_ids = self.sample_logits(
                 logits[0][-1:],
                 self.sampling_method,
@@ -207,7 +220,7 @@ class Inference:
         if history is None:
             history = []
         sampling_value = sampling_config.get("sampling_value", self.sampling_value)
-        temperature = sampling_config.get("sampling_value", self.temperature)
+        temperature = sampling_config.get("temperature", self.temperature)
         messages = [{"role": "system", "content": system_prompt}]
         # print("prompt: ", prompt)
         with self.lock:
@@ -227,6 +240,7 @@ class Inference:
         input_ids = self.tokenizer(
             [text], return_tensors="np"
         )["input_ids"].astype(np.int64).reshape(1, -1)
+        input_ids = input_ids[:, -self.max_input_length:]
         self.first = False
         ids_list = []
         # text_length = 0
@@ -240,9 +254,20 @@ class Inference:
             temp_list = trange(max_output_len, desc="decode")
         else:
             temp_list = range(max_output_len)
+        prefill_show_progress = False
         for i in temp_list:
-            prefill_show_progress = (i == 0)
-            logits = self.session.run(input_ids, show_progress=prefill_show_progress)[0]
+            if i == 0:
+                if show_progress:
+                    prefill_show_progress = True
+                # reset counter
+                self.session.run_times = 0
+                self.session.kv_cache.real_kv_size = 0
+            else:
+                prefill_show_progress = False
+            logits = self.session.run(
+                input_ids,
+                show_progress=prefill_show_progress
+            )[0]
             input_ids = self.sample_logits(
                 logits[0][-1:],
                 self.sampling_method,
@@ -275,9 +300,10 @@ class Inference:
         show_progress: bool = False,
     ):
         sampling_value = sampling_config.get("sampling_value", self.sampling_value)
-        temperature = sampling_config.get("sampling_value", self.temperature)
+        temperature = sampling_config.get("temperature", self.temperature)
         self.first = False
         ids_list = []
+        input_ids = input_ids[:, -self.max_input_length:]
         input_length = input_ids.shape[1]
         max_output_len = self.max_output_length - input_length
         max_output_len = min(max_output_len, max_new_tokens)
@@ -285,9 +311,20 @@ class Inference:
             temp_list = trange(max_output_len, desc="decode")
         else:
             temp_list = range(max_output_len)
+        prefill_show_progress = False
         for i in temp_list:
-            prefill_show_progress = (i == 0)
-            logits = self.session.run(input_ids, show_progress=prefill_show_progress)[0]
+            if i == 0:
+                if show_progress:
+                    prefill_show_progress = True
+                # reset counter
+                self.session.run_times = 0
+                self.session.kv_cache.real_kv_size = 0
+            else:
+                prefill_show_progress = False
+            logits = self.session.run(
+                input_ids,
+                show_progress=prefill_show_progress
+            )[0]
             input_ids = self.sample_logits(
                 logits[0][-1:],
                 self.sampling_method,
@@ -302,7 +339,7 @@ class Inference:
                     break
                 ids_list.append(input_ids[0].item())
                 text_out = self.tokenizer.decode(ids_list)
-                print("Debug: ", text_out)
+                # print("Debug: ", text_out)
                 # stop_word = is_stop_word_or_prefix(text_out, ["[|Human|]", "[|AI|]"])
                 self.state['message'] = text_out
         with self.lock:

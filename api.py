@@ -350,7 +350,7 @@ def parse_response(response):
 
 
 # completion mode, not chat mode
-def text_complete_last_message(history, stop_words_ids, max_new_tokens): # sampling_config, :
+def text_complete_last_message(history, stop_words_ids, sampling_config, max_new_tokens):
     im_start = "<|im_start|>"
     im_end = "<|im_end|>"
     prompt = f"{im_start}system\nYou are a helpful assistant.{im_end}"
