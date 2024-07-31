@@ -50,7 +50,7 @@
 
 ### 详细运行步骤
 ##### 步骤1：编译模型（以Qwen2-1.5B-Instruct）为例。
-1. 除了上面说的CANN环境安装外，还需额外安装一些python模块。
+1. 除了上面说的CANN环境安装外，还需额外安装一些python模块。当然，你也可以使用docker构建开发环境，但是注意你的芯片和对应的得是310B系列，如果不是，需要参考官方镜像文档做一些修改。
   ```bash
   cd qwen-ascend-llm
   pip install -r ./requirements.txt
