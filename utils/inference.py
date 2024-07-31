@@ -145,7 +145,7 @@ class Inference:
             [text], return_tensors="np"
         )["input_ids"].astype(np.int64).reshape(1, -1)
         input_ids = input_ids[:, -self.max_input_length:]
-        print("input_ids shape: ", input_ids.shape)
+        # print("input_ids shape: ", input_ids.shape)
         self.first = False
         ids_list = []
         text_length = 0
