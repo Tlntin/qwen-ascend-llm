@@ -42,7 +42,7 @@
 
 - 调用容器提供的api接口。进入本项目的client目录，可以运行里面的文件请求服务端。
   ```bash
-  # openai_stream_client.py 流式请求，类似打字机效果
+  # openai_stream_client.py 流式请求，类似打字机效果，发送请求后立刻得到响应
   # openai_normal_client.py 非流式请求，需要等模型推理完再返回
   # openai_function_call.py 测试function_call，该功能启用时建议增加max_input_length和kv_cache_length的长度。
   ```
@@ -116,7 +116,7 @@
 
 - 进入client目录，可以运行里面的文件请求服务端。
   ```bash
-  # openai_stream_client.py 流式请求，类似打字机效果
+  # openai_stream_client.py 流式请求，类似打字机效果，发送请求后立刻得到响应
   # openai_normal_client.py 非流式请求，需要等模型推理完再返回
   # openai_function_call.py 测试function_call，该功能启用时建议增加max_input_length和kv_cache_length的长度。
   ```
