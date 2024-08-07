@@ -26,8 +26,8 @@
 
 - 拉取编译好的镜像（仅适配昇腾310B1,例如香橙派AIPro 20T版）镜像内置了一个Qwen2-1.5B-Instruct模型以及对应的.om文件。
   ```bash
-  docker pull registry.cn-guangzhou.aliyuncs.com/tlntin/qwen_ascend_llm:v0.0.1_310B_arm64
-  docker tag registry.cn-guangzhou.aliyuncs.com/tlntin/qwen_ascend_llm:v0.0.1_310B_arm64 qwen_ascend_llm
+  docker pull registry.cn-guangzhou.aliyuncs.com/tlntin/qwen_ascend_llm:v0.0.1_310B1_arm64
+  docker tag registry.cn-guangzhou.aliyuncs.com/tlntin/qwen_ascend_llm:v0.0.1_310B1_arm64 qwen_ascend_llm
   ```
 
 - 启动部署用的容器（如果是开发用的容器，可以参考该脚本稍微修改，比如最底下的`python api.py`命令可以换成`sleep 8640000`让100天内不会关闭，然后加上-v 参数挂载一下download/output目录）。
