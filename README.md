@@ -3,6 +3,12 @@
 - 仅在昇腾310B1与910A上面做了测试，理论上也兼容其他昇腾芯片。
 - 仅测试了qwen1.5-0.5b-chat与qwen2-1.5b-instruct模型，理论上支持qwen1.5/qwen2系列所有chat/instruct模型。
 - CANN环境安装可以参考[该教程](https://www.hiascend.com/forum/thread-0286155882998311250-1-1.html)，建议安装CANN 8.0RC2或者更高版本。
+- 如果你没有昇腾NPU设备，但是也想要体验一下试试，可以试试下面的免费云平台，注册即送50积分，可以体验25小时的昇腾910。
+```text
+您的好友正在邀请您加入OpenI启智AI协作平台，畅享充沛的普惠算力资源(GPU/NPU/GCU/GPGPU/DCU/MLU)。
+注册地址：https://openi.pcl.ac.cn/user/sign_up?sharedUser=Tlntin
+推荐人：Tlntin
+```
 
 ### 准备工作
 1. 下载本项目
