@@ -8,4 +8,5 @@ tqdm
 fastapi
 uvicorn
 sse_starlette==1.6.5
+pydantic==2.1.1
 openai
