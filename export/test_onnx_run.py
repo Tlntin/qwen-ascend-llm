@@ -41,11 +41,9 @@ else:
 def create_kv_cache(config: Qwen2Config, kv_cache_length=1024):
     return np.zeros(
         [
-            config.num_hidden_layers,
-            2,
             1,
-            config.num_key_value_heads,
             kv_cache_length,
+            config.num_hidden_layers * 2 * config.num_key_value_heads,
             config.hidden_size // config.num_attention_heads
         ],
         dtype=np_dtype
@@ -68,15 +66,13 @@ def get_inputs(kv_cache, seq_len: int, real_kv_size=0, input_pos=0, past_kv_size
 
     """
     self.kv_cache shape (
-        self.num_hidden_layers,
-        2,
         1,
-        self.num_key_value_heads,
         self.kv_cache_length,
+        self.num_hidden_layers * 2 * self.num_key_value_heads,
         self.per_head_dim
     )
     """
-    cache = kv_cache[:, :, :, :, :past_kv_size]
+    cache = kv_cache[:, :past_kv_size]
     mask = np.ones((1, past_kv_size + seq_len), dtype=np.int64)
     mask[:, real_kv_size: past_kv_size] = 0
     pos_id = np.arange(
@@ -108,6 +104,10 @@ input_ids = tokenizer(
 print("input_ids", input_ids)
 
 options = onnxruntime.SessionOptions()
+options.intra_op_num_threads = 4
+options.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
+options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+
 llm_session = onnxruntime.InferenceSession(
     args.onnx_model_path,
     sess_options=options,
@@ -138,5 +138,3 @@ new_kv_cache = outputs[1]  # [:, :, :, :, :-1, :]
 print("new_kv_cache: shape", new_kv_cache.shape)
 print("new_kv_cache: mean: ", new_kv_cache.astype(np.float32).mean().item())
 print("new_kv_cache: max: ", new_kv_cache.astype(np.float32).max().item())
-
-

@@ -13,6 +13,7 @@ from ctypes import c_void_p, c_int, c_size_t, c_ulong, c_int64,POINTER
 ACL_MEM_MALLOC_HUGE_FIRST = 0
 ACL_MEMCPY_HOST_TO_DEVICE = 1
 ACL_MEMCPY_DEVICE_TO_HOST = 2
+ACL_MEMCPY_DEVICE_TO_DEVICE = 3
 ACL_MEM_MALLOC_NORMAL_ONLY = 2
 NPY_FLOAT32 = 11
 
@@ -78,7 +79,11 @@ class ACLModel:
         self.exit_flag = False
         self.max_batch = config.max_batch
         self.kv_cache_length = config.kv_cache_length
-        self.kv_cache = np.zeros(config.past_key_value_shape, dtype=np.float16)
+        # kv_cache的长度和max_output_length的长度一样
+        self.past_kv_size=self.kv_cache_length
+        self.input_pos = 0
+        self.real_kv_size = 0
+        # self.kv_cache = np.zeros(config.past_key_value_shape, dtype=np.float16)
         self.input_dataset, self.output_dataset = None, None
         self.inputs:List[Dict[str,]] = []
         self.outputs:List[Dict[str,]] =  []
@@ -93,6 +98,75 @@ class ACLModel:
         check_ret("acl.util.start_thread", ret)
         ret = acl.rt.subscribe_report(self.tid, self.stream)
         check_ret("acl.rt.subscribe_report", ret)
+
+    def get_inputs(self, seq_len: int) -> List[np.ndarray]:
+        """
+        获取指定长度的kv_cache, 顺便生成mask和position_id
+        Args:
+            seq_len (int): 待获取的kv-cache长度
+
+        Returns:
+            List[np.ndarray]: _description_
+        """
+
+        """
+        self.kv_cache shape (
+            1,
+            self.kv_cache_length,
+            self.num_hidden_layers * 2 * self.num_key_value_heads,
+            self.per_head_dim
+        )
+        """ 
+        mask = np.ones((1,self.past_kv_size + seq_len), dtype=np.int64)
+        mask[:, self.real_kv_size: self.past_kv_size] = 0
+        pos_id =np.arange(
+            self.input_pos, 
+            self.input_pos + seq_len,
+            dtype=np.int64
+        ).reshape(1,-1)
+        return mask, pos_id
+
+    def reset(self):
+        # 重置kv-cache
+        self.input_pos=0
+        self.real_kv_size=0
+        ret = acl.rt.memset(
+            self.inputs[3]["buffer"], # 内存的起始地址。
+            self.inputs[3]["size"], # 内存的最大长度，单位Byte。
+            0,
+            self.inputs[3]["size"] # 需要设置为指定值的内存长度，单位Byte。
+        )
+        check_ret("reset device kv-cache", ret)
+    
+    def update_kv_cache(self, seq_len):
+        self.input_pos = self.real_kv_size + seq_len
+        if seq_len + self.real_kv_size > self.kv_cache_length:
+            seq_len = self.kv_cache_length - self.real_kv_size
+        if seq_len <= 0:
+            return
+        # 用device memory完成下面的操作
+        # self.kv_cache[:, self.real_kv_size: self.real_kv_size + seq_len] = new_kv_cache[:, 0: seq_len]
+        # kv-cache shape
+        """
+        new_kv_cache_shape = [
+            self.max_batch,
+            seq_length,
+            self.config.num_hidden_layers * 2 * self.config.num_key_value_heads,
+            self.config.per_head_dim
+        ]
+        """
+        base_size = self.config.num_hidden_layers * 2 * self.config.num_key_value_heads * self.config.per_head_dim
+        # print("base_size: ", base_size)
+        # 默认是void指针，想要往前切片，需要将数据个数 * 2（代表float16)偏移
+        ret = acl.rt.memcpy(
+            self.inputs[3]["buffer"] + (base_size * self.real_kv_size * self.max_batch) * 2, # 目的内存地址指针地址。
+            base_size * (self.kv_cache_length - self.real_kv_size) * 2, # 目的内存地址的最大内存长度，单位Byte。
+            self.outputs[1]["buffer"],
+            base_size * seq_len * 2,
+            ACL_MEMCPY_DEVICE_TO_DEVICE
+        )
+        check_ret("update device cache", ret)
+        self.real_kv_size += seq_len
     
     def unload(self):
         if self.callback_func:
@@ -138,18 +212,10 @@ class ACLModel:
         self.input_dataset = acl.mdl.create_dataset()
         input_size = acl.mdl.get_num_inputs(self.model_desc)
         self.inputs = []
+        # 给输入分配Device内存
         for i in range(input_size):
             buffer_size = acl.mdl.get_input_size_by_index(self.model_desc, i)
-            # if i == 3:
-            #     buffer, ret = acl.rt.malloc(buffer_size, ACL_MEM_MALLOC_HUGE_FIRST)
-            #     self.kv_cache = acl.util.ptr_to_numpy(
-            #         buffer, self.config.past_key_value_shape, 23 # 23：NPY_HALF，NPY_FLOAT16
-            #     )
-            #     data = acl.create_data_buffer(buffer, buffer_size)
-            #     _, ret = acl.mdl.add_dataset_buffer(self.input_dataset, data)
-            #     check_ret("add_dataset_buffer",ret)
-            #     self.inputs.append({"buffer": buffer, "size": buffer_size})
-            # else:
+            # print(f"input[{i}], buffer size = {buffer_size}")
             buffer, ret = acl.rt.malloc(buffer_size, ACL_MEM_MALLOC_HUGE_FIRST)
             check_ret("alloc input memory",ret)
             data = acl.create_data_buffer(buffer, buffer_size)
@@ -160,16 +226,22 @@ class ACLModel:
         self.output_dataset = acl.mdl.create_dataset()
         output_size = acl.mdl.get_num_outputs(self.model_desc)
         self.outputs = []
+        # 给输出分配device和host内存
         for i in range(output_size):
             buffer_size = acl.mdl.get_output_size_by_index(self.model_desc, i)
+            # print(f"output[{i}], buffer size = {buffer_size}")
             data_type = acl.mdl.get_output_data_type(self.model_desc, i)
             buffer, ret = acl.rt.malloc(buffer_size, ACL_MEM_MALLOC_HUGE_FIRST)
             check_ret("alloc output memory",ret)
             data = acl.create_data_buffer(buffer, buffer_size)
             _, ret = acl.mdl.add_dataset_buffer(self.output_dataset, data)
             check_ret("add_dataset_buffer",ret)
-            buffer_host, ret = acl.rt.malloc_host(buffer_size)
-            check_ret("alloc output host memory",ret)
+            if i == 0:
+                buffer_host, ret = acl.rt.malloc_host(buffer_size)
+                check_ret("alloc output host memory",ret)
+            # 对于new_kv_cache，不需要分配host内存，后面直接在device内存进行更新，节省内存
+            else:
+                buffer_host = None
             self.outputs.append(
                 {
                     "buffer": buffer,
@@ -183,20 +255,26 @@ class ACLModel:
         """
         释放内存
         """
-        for item in self.input_data:
+        for i, item in enumerate(self.input_data):
             ret = acl.rt.free(item["buffer"])
+            check_ret(f"free input[{i}] device memory",ret)
         ret = acl.mdl.destroy_dataset(self.input_dataset)
-        for item in self.output_data:
+        for i, item in enumerate(self.output_data):
             ret = acl.rt.free(item["buffer"])
-            ret = acl.rt.free_host(item["buffer_host"])
+            check_ret("free output device memory",ret)
+            # 分配结果只分配了logitst的CPU内存，所以释放的时候也只释放logists的
+            if i == 0: 
+                ret = acl.rt.free_host(item["buffer_host"])
         ret = acl.mdl.destroy_dataset(self.output_dataset)
 
-    def inference(self, input_data_list: List[np.ndarray], seq_length=1, is_dynamic=False) -> List[np.ndarray]:
+    def inference(self, input_data_list: List[np.ndarray], seq_length=1, is_dynamic=False, is_prefill=False) -> List[np.ndarray]:
         """
         执行推理，同步方式
         Args:
             input_data_list (_type_): _description_
             seq_length: 推理长度
+            is_dynamic: 是否动态推理
+            is_prefill: 是否是prefill阶段
 
         Returns:
             List[np.ndarray]: _description_
@@ -204,9 +282,7 @@ class ACLModel:
         start = time.time()
         acl.rt.set_context(self.context)
         for i in range(len(input_data_list)):
-            # if i == 3:
-            #     continue
-            # else:
+            # 内存拷贝，忽略kv_cache，待会直接在device侧更新
             input_data = input_data_list[i]
             input_size = input_data.size
             input_itemsize = input_data.itemsize
@@ -270,16 +346,6 @@ class ACLModel:
             new_kv_cache_itemsize = new_kv_cache_size * output_itemsize2
             output_sizes = [logits_size, new_kv_cache_size]
             output_itemsizes = [logits_itemsize, new_kv_cache_itemsize]
-        logits_shape = [self.max_batch, seq_length, self.config.vocab_size]
-        new_kv_cache_shape = [
-            self.config.num_hidden_layers,
-            2,
-            self.max_batch,
-            self.config.num_key_value_heads,
-            seq_length,
-            self.config.per_head_dim
-        ]
-        output_shapes = [logits_shape, new_kv_cache_shape]
 
         ret = acl.mdl.execute(
             self.model_id,
@@ -287,31 +353,42 @@ class ACLModel:
             self.output_dataset
         )
         check_ret("model_execute", ret)
-        inference_result = []
 
-        for output_idx, out in enumerate(self.outputs):
+        """
+        获取输出结果, 从GPU拷贝输出数据到CPU
+        # 输出结果1：logits
+        # 输出结果2：new_kv_cache
+        prefill结果可以跳过logits的拷贝
+        """
+        # == update device kv cache ==
+        self.update_kv_cache(seq_len=seq_length)
+        # 非prefill阶段才拷贝logits作为输出    
+        if not is_prefill:
+            # === update logits === 
             if is_dynamic:
-                output_itemsize = output_itemsizes[output_idx]
-                output_size = output_sizes[output_idx]
+                output_itemsize = output_itemsizes[0]
+                output_size = output_sizes[0]
             else:
-                output_itemsize = out["size"]
-                output_size = output_itemsize // np.dtype(out["dtype"]).itemsize
+                output_itemsize = self.outputs[0]["size"]
+                output_size = output_itemsize // np.dtype(self.outputs[0]["dtype"]).itemsize
+            logits_shape = [self.max_batch, seq_length, self.config.vocab_size]
             ret = acl.rt.memcpy(
-                out['buffer_host'],
-                out["size"],
-                out["buffer"],
+                self.outputs[0]['buffer_host'],
+                self.outputs[0]["size"],
+                self.outputs[0]["buffer"],
                 output_itemsize,
                 ACL_MEMCPY_DEVICE_TO_HOST
             )
             check_ret("memcpy output", ret)
-            bytes_out = acl.util.ptr_to_bytes(out['buffer_host'], out["size"])
-            out_data = np.frombuffer(
+            bytes_out = acl.util.ptr_to_bytes(self.outputs[0]['buffer_host'], self.outputs[0]["size"])
+            logits = np.frombuffer(
                 bytes_out,
-                dtype=out['dtype'],
+                dtype=self.outputs[0]['dtype'],
                 count=output_size,
-            ).reshape(output_shapes[output_idx])
-            inference_result.append(out_data)
-        return inference_result
+            ).reshape(logits_shape)
+            return logits
+        else:
+            return None
     
     def inference_async(self, data, other_args) -> List[np.ndarray]:
         """

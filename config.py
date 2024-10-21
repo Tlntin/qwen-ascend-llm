@@ -8,6 +8,7 @@ class InferenceConfig:
         hf_model_dir: str,
         om_model_path: str,
         onnx_model_path: str,
+        cpu_thread: int = 4, # CPU线程数
         session_type: str = "acl", # 支持acl和onnx两种，acl即Ascend C Language
         device_id: int = 0,
         sampling_method: str = "top_p", # 支持 greedy, top_p, top_k
@@ -30,6 +31,7 @@ class InferenceConfig:
             assert os.path.exists(onnx_model_path), print(onnx_model_path, "not exists")
         self.om_model_path = om_model_path
         self.onnx_model_path = onnx_model_path
+        self.cpu_thread = cpu_thread
         self.device_id = device_id
         self.sampling_method = sampling_method
         self.sampling_value = sampling_value
@@ -48,11 +50,9 @@ class InferenceConfig:
         self.num_attention_heads = self.model_config.num_attention_heads
         self.per_head_dim = self.hidden_size // self.num_attention_heads # head_dim
         self.past_key_value_shape = (
-            self.num_hidden_layers,
-            2,
             self.max_batch,
-            self.num_key_value_heads,
             self.kv_cache_length,
+            self.num_hidden_layers * 2 * self.num_key_value_heads,
             self.per_head_dim
         )
         self.max_prefill_length = max_prefill_length

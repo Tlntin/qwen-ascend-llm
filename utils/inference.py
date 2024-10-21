@@ -166,14 +166,13 @@ class Inference:
                 if show_progress:
                     prefill_show_progress = True
                 # reset counter
-                self.session.run_times = 0
-                self.session.kv_cache.real_kv_size = 0
+                self.session.reset()
             else:
                 prefill_show_progress = False
             logits = self.session.run(
                 input_ids,
-                show_progress=prefill_show_progress
-            )[0]
+                show_progress=prefill_show_progress,
+            )
             input_ids = self.sample_logits(
                 logits[0][-1:],
                 self.sampling_method,

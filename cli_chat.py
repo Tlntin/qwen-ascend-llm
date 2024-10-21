@@ -75,12 +75,13 @@ def inference_cli():
             break
         if input_text == 'clear':
             history = []
+            infer_engine.session.reset()
             print("Output: 已清理历史对话信息。")
             continue
         print("Output: ", end='')
         response = ""
         is_first = True
-        first_token_lantency, decode_speed = 0, 0
+        first_token_lantency, decode_speed, total_speed = 0, 0, 0.0
         for (
                 new_text,
                 first_token_lantency,

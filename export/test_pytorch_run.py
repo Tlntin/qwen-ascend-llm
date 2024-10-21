@@ -45,11 +45,9 @@ else:
 def create_kv_cache(config: Qwen2Config, kv_cache_length=1024):
     return torch.zeros(
         [
-            config.num_hidden_layers,
-            2,
             1,
-            config.num_key_value_heads,
             kv_cache_length,
+            config.num_hidden_layers * 2 * config.num_key_value_heads,
             config.hidden_size // config.num_attention_heads
         ],
         dtype=torch_dtype
@@ -72,15 +70,13 @@ def get_inputs(kv_cache, seq_len: int, real_kv_size=0, input_pos=0, past_kv_size
 
     """
     self.kv_cache shape (
-        self.num_hidden_layers,
-        2,
         1,
-        self.num_key_value_heads,
         self.kv_cache_length,
+        self.num_hidden_layers * 2 * self.num_key_value_heads,
         self.per_head_dim
     )
     """
-    cache = kv_cache[:, :, :, :, :past_kv_size]
+    cache = kv_cache[:, :past_kv_size]
     mask = torch.ones((1, past_kv_size + seq_len), dtype=torch.long).to(device_str)
     mask[:, real_kv_size: past_kv_size] = 0
     pos_id = torch.arange(
@@ -115,12 +111,12 @@ input_ids = tokenizer(
 )["input_ids"].to(device_str)
 print("input_ids", input_ids)
 kv_cache1 = create_kv_cache(model_config)
-now_kv_cache, attn_mask, position_ids = get_inputs(kv_cache1, 2, )
+now_kv_cache, attn_mask, position_ids = get_inputs(kv_cache1, 1)
 print("now_kv_cache shape: ", now_kv_cache.shape)
 print("attention_mask shape: ", attn_mask.shape)
 print("position_ids shape: ", position_ids.shape)
 outputs = model.forward(
-    input_ids[:, :2],
+    input_ids[:, :1],
     attn_mask,
     position_ids,
     now_kv_cache,
@@ -129,13 +125,13 @@ outputs = model.forward(
 )
 print("==== pytorch runtime ====")
 print("output length: ", len(outputs))
-logits = outputs[0][:, :-1, :]  # 1: -0.10800
+logits = outputs[0]  # 1: -0.10800
 # logits = outputs[0][:, -1:, :]  # 2: -0.008756
 
 print("logits shape: ", logits.shape)
 print("logits mean: ", logits.float().mean().item())
 print("logits max: ", logits.float().max().item())
-new_kv_cache = outputs[1][:, :, :, :, :-1, :]  # 1: 0.0009:
+new_kv_cache = outputs[1]  # 1: 0.0009:
 # new_kv_cache = outputs[1][:, :, :, :, -1:, :]  # 2: 0.003526
 
 print("new_kv_cache: shape:", new_kv_cache.shape)
@@ -143,4 +139,3 @@ print("new_kv_cache: shape:", new_kv_cache.shape)
 print("new_kv_cache: mean: ", new_kv_cache.float().mean().item())
 # print("new_kv_cache: max: ", new_kv_cache.astype(np.float32).max().item())
 print("new_kv_cache: max: ", new_kv_cache.float().max().item())
-

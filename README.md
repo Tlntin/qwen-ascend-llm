@@ -58,6 +58,8 @@
 2. 导出onnx，默认kv-cache长度为1024，可以根据自己的内存、显存来设置更大参数。
   ```bash
   python3 export/export_onnx.py \
+    --device_str=npu \
+    --dtype=float16 \
     --hf_model_dir="./download/Qwen2-1.5B-Instruct" \
     --onnx_model_path="./output/onnx/qwen2_1.5b_chat.onnx" \
     --kv_cache_length=1024

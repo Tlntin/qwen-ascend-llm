@@ -39,14 +39,14 @@ def parser_arguments():
         type=str,
         choices=["npu", "cuda", "cpu"],
         help="support npu, cuda, cpu",
-        default="npu",
+        default="cpu",
     )
     parser.add_argument(
         "--dtype" ,
         type=str,
         help="support float16/float32, if use CPU, only support fp32",
         choices=["float16", "float32"],
-        default="float16",
+        default="float32",
     )
     parser.add_argument(
         '--hf_model_dir',
@@ -125,7 +125,7 @@ def export_onnx(
         "input_ids": {0: "batch_size", 1: "seq_length"},
         "attention_mask": {0: "batch_size", 1: "seq_length+kv_len"},
         "position_ids": {0: "batch_size", 1: "seq_length"},
-        "past_key_values": {2: "batch_size", 4: "kv_len"},
+        "past_key_values": {0: "batch_size", 1: "kv_len"},
     }
     batch_size = 1
     seq_len = 1
@@ -136,11 +136,9 @@ def export_onnx(
     position_ids = torch.zeros((batch_size, seq_len)).long().to(device)
     past_key_values = torch.rand(
         (
-            num_hidden_layers,
-            2,
             1,
-            num_key_value_heads,
             kv_cache_length,
+            num_hidden_layers * 2 * num_key_value_heads,
             per_head_dim
         ),
         dtype=torch_dtype

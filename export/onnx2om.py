@@ -138,11 +138,9 @@ for dynamic_dim in zip(
     dynamic_dim = [str(dim) for dim in dynamic_dim]
     dynamic_dims.append(",".join(dynamic_dim))
 past_key_values_shape = [
-    num_hidden_layers,
-    2,
     f"1~{max_batch}" if max_batch > 1 else "1",
-    num_key_value_heads,
     kv_cache_length,
+    num_hidden_layers * 2 * num_key_value_heads,
     per_head_dim
 ]
 past_key_values_shape = [str(x) for x in past_key_values_shape]

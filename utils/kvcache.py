@@ -65,8 +65,8 @@ class KVCacheManger:
             self.per_head_dim
         )
         """ 
-        cache = self.kv_cache[:, :, :, :, :self.past_kv_size]
-        mask = np.ones((1,self.past_kv_size + seq_len),dtype=np.int64)
+        cache = self.kv_cache[:, :self.past_kv_size]
+        mask = np.ones((1,self.past_kv_size + seq_len), dtype=np.int64)
         mask[:, self.real_kv_size: self.past_kv_size] = 0
         pos_id =np.arange(
             self.input_pos, 
@@ -146,11 +146,9 @@ class FixSizeKVCache(KVCacheManger):
     ) -> None:
         """
         self.kv_cache shape (
-            self.num_hidden_layers,
-            2,
             1,
-            self.num_key_value_heads,
             self.kv_cache_length,
+            self.num_hidden_layers * 2 * self.num_key_value_heads,
             self.per_head_dim
         )
         """ 
@@ -161,10 +159,10 @@ class FixSizeKVCache(KVCacheManger):
             return
         if self.cache_format=="huggingface-tensor":
             temp_shape = list(self.past_key_value_shape)
-            temp_shape[-2] = -1
+            temp_shape[1] = -1
             new_kv_cache = new_kv_cache.reshape(temp_shape)
-            self.kv_cache[:, :, :, :, self.real_kv_size: self.real_kv_size + seq_len] = \
-                new_kv_cache[:, :, :, :, 0: seq_len]
+            self.kv_cache[:, self.real_kv_size: self.real_kv_size + seq_len] = \
+                new_kv_cache[:, 0: seq_len]
         self.real_kv_size += seq_len
 
 class FixSizeStreamLLM(KVCacheManger):
@@ -180,7 +178,7 @@ class FixSizeStreamLLM(KVCacheManger):
         score:Optional[np.ndarray] = None
     ):
         self.input_pos+=seq_len
-        while self.past_len+ seq_len  > self.kv_cache_length:
+        while self.past_len+ seq_len > self.kv_cache_length:
             self.update_part(new_kv_cache, self.past_len, self.kv_cache_length - self.past_len)
             seq_len -= (self.kv_cache_length-self.past_len)
             self.past_len= self.head_len

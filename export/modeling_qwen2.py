@@ -246,7 +246,7 @@ class Qwen2Attention(nn.Module):
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Cache] = None,
+        past_key_value: Optional[torch.Tensor] = None,
         # output_attentions: bool = False,
         # use_cache: bool = False,
         **kwargs,
@@ -274,14 +274,25 @@ class Qwen2Attention(nn.Module):
                     "with a layer index."
                 )
             # kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-            kv_seq_len += past_key_value[self.layer_idx].shape[3]
+            kv_seq_len += past_key_value.shape[1]
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
-        out_cache = (key_states, value_states)
+        output_cache = (
+            key_states.transpose(1, 2),
+            value_states.transpose(1, 2)
+        )
         if past_key_value is not None:
             # cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
-            cache_key = past_key_value[self.layer_idx][0]
-            cache_value = past_key_value[self.layer_idx][1]
+            cache_key = past_key_value[
+                :,
+                :,
+                self.layer_idx * 2 * self.num_key_value_heads: (self.layer_idx * 2 + 1) * self.num_key_value_heads
+            ].transpose(1, 2)
+            cache_value = past_key_value[
+                :,
+                :,
+                (self.layer_idx * 2 + 1) * self.num_key_value_heads: (self.layer_idx * 2 + 2) * self.num_key_value_heads
+            ].transpose(1, 2)
             key_states = torch.cat((cache_key, key_states), dim=2)
             value_states = torch.cat((cache_value, value_states), dim=2)
             # key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
@@ -326,7 +337,7 @@ class Qwen2Attention(nn.Module):
         #     attn_weights = None
 
         # return attn_output, attn_weights, past_key_value
-        return attn_output, attn_weights, out_cache
+        return attn_output, attn_weights, output_cache
 
 
 '''
@@ -647,7 +658,7 @@ class Qwen2SdpaAttention(Qwen2Attention):
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Cache] = None,
+        past_key_value: Optional[torch.Tensor] = None,
         # output_attentions: bool = False,
         # use_cache: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
@@ -679,16 +690,27 @@ class Qwen2SdpaAttention(Qwen2Attention):
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
             # kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-            kv_seq_len += past_key_value[self.layer_idx].shape[3]
+            kv_seq_len += past_key_value.shape[1]
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
 
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
-        output_cache = (key_states, value_states)
+        output_cache = (
+            key_states.transpose(1, 2),
+            value_states.transpose(1, 2)
+        )
         if past_key_value is not None:
             # cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
             # key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
-            cache_key = past_key_value[self.layer_idx][0]
-            cache_value = past_key_value[self.layer_idx][1]
+            cache_key = past_key_value[
+                :,
+                :,
+                self.layer_idx * 2 * self.num_key_value_heads: (self.layer_idx * 2 + 1) * self.num_key_value_heads
+            ].transpose(1, 2)
+            cache_value = past_key_value[
+                :,
+                :,
+                (self.layer_idx * 2 + 1) * self.num_key_value_heads: (self.layer_idx * 2 + 2) * self.num_key_value_heads
+            ].transpose(1, 2)
             key_states = torch.cat((cache_key, key_states), dim=2)
             value_states = torch.cat((cache_value, value_states), dim=2)
 
@@ -782,7 +804,6 @@ class Qwen2DecoderLayer(nn.Module):
         residual = hidden_states
 
         hidden_states = self.input_layernorm(hidden_states)
-
         # Self Attention
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
@@ -970,7 +991,7 @@ class Qwen2Model(Qwen2PreTrainedModel):
             # dtype=torch.int64
         )
         full_attention_mask.tril_()
-        past_length = past_key_values.shape[4]
+        past_length = past_key_values.shape[1]
         # if past_length is not None:
         full_attention_mask = torch.cat(
             (
@@ -1155,8 +1176,9 @@ class Qwen2Model(Qwen2PreTrainedModel):
         # next_cache = None
         # if use_cache:
             # next_cache = next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache
-        one_shape = [len(presents) // 2, 2] + list(presents[0].shape)
-        presents = torch.concat(presents).reshape(one_shape)
+        one_shape = list(presents[0].shape)
+        one_shape[2] = one_shape[2] * len(presents)
+        presents = torch.concat(presents, dim=2)
         return (
             hidden_states,
             presents,
