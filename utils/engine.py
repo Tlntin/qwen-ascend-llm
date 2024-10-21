@@ -76,9 +76,9 @@ class ACLModel:
         self.stream = None
         self.callback_interval = 1
         self.exit_flag = False
-        self.kv_cache = None
         self.max_batch = config.max_batch
         self.kv_cache_length = config.kv_cache_length
+        self.kv_cache = np.zeros(config.past_key_value_shape, dtype=np.float16)
         self.input_dataset, self.output_dataset = None, None
         self.inputs:List[Dict[str,]] = []
         self.outputs:List[Dict[str,]] =  []
@@ -140,22 +140,22 @@ class ACLModel:
         self.inputs = []
         for i in range(input_size):
             buffer_size = acl.mdl.get_input_size_by_index(self.model_desc, i)
-            if i == 3:
-                buffer, ret = acl.rt.malloc(buffer_size, ACL_MEM_MALLOC_HUGE_FIRST)
-                self.kv_cache = acl.util.ptr_to_numpy(
-                    buffer, self.config.past_key_value_shape, 23 # 23：NPY_HALF，NPY_FLOAT16
-                )
-                data = acl.create_data_buffer(buffer, buffer_size)
-                _, ret = acl.mdl.add_dataset_buffer(self.input_dataset, data)
-                check_ret("add_dataset_buffer",ret)
-                self.inputs.append({"buffer": buffer, "size": buffer_size})
-            else:
-                buffer, ret = acl.rt.malloc(buffer_size, ACL_MEM_MALLOC_HUGE_FIRST)
-                check_ret("alloc input memory",ret)
-                data = acl.create_data_buffer(buffer, buffer_size)
-                _, ret = acl.mdl.add_dataset_buffer(self.input_dataset, data)
-                check_ret("add_dataset_buffer",ret)
-                self.inputs.append({"buffer": buffer, "size": buffer_size})
+            # if i == 3:
+            #     buffer, ret = acl.rt.malloc(buffer_size, ACL_MEM_MALLOC_HUGE_FIRST)
+            #     self.kv_cache = acl.util.ptr_to_numpy(
+            #         buffer, self.config.past_key_value_shape, 23 # 23：NPY_HALF，NPY_FLOAT16
+            #     )
+            #     data = acl.create_data_buffer(buffer, buffer_size)
+            #     _, ret = acl.mdl.add_dataset_buffer(self.input_dataset, data)
+            #     check_ret("add_dataset_buffer",ret)
+            #     self.inputs.append({"buffer": buffer, "size": buffer_size})
+            # else:
+            buffer, ret = acl.rt.malloc(buffer_size, ACL_MEM_MALLOC_HUGE_FIRST)
+            check_ret("alloc input memory",ret)
+            data = acl.create_data_buffer(buffer, buffer_size)
+            _, ret = acl.mdl.add_dataset_buffer(self.input_dataset, data)
+            check_ret("add_dataset_buffer",ret)
+            self.inputs.append({"buffer": buffer, "size": buffer_size})
 
         self.output_dataset = acl.mdl.create_dataset()
         output_size = acl.mdl.get_num_outputs(self.model_desc)
@@ -204,26 +204,26 @@ class ACLModel:
         start = time.time()
         acl.rt.set_context(self.context)
         for i in range(len(input_data_list)):
-            if i == 3:
-                continue
+            # if i == 3:
+            #     continue
+            # else:
+            input_data = input_data_list[i]
+            input_size = input_data.size
+            input_itemsize = input_data.itemsize
+            bytes_data = input_data.tobytes()
+            np_ptr = acl.util.bytes_to_ptr(bytes_data)
+            if is_dynamic:
+                input_copy_size = input_size * input_itemsize
             else:
-                input_data = input_data_list[i]
-                input_size = input_data.size
-                input_itemsize = input_data.itemsize
-                bytes_data = input_data.tobytes()
-                np_ptr = acl.util.bytes_to_ptr(bytes_data)
-                if is_dynamic:
-                    input_copy_size = input_size * input_itemsize
-                else:
-                    input_copy_size = self.inputs[i]["size"]
-                ret = acl.rt.memcpy(
-                    self.inputs[i]["buffer"],
-                    self.inputs[i]["size"],
-                    np_ptr,
-                    input_copy_size,
-                    ACL_MEMCPY_HOST_TO_DEVICE
-                )
-                check_ret("memcpy input", ret)
+                input_copy_size = self.inputs[i]["size"]
+            ret = acl.rt.memcpy(
+                self.inputs[i]["buffer"],
+                self.inputs[i]["size"],
+                np_ptr,
+                input_copy_size,
+                ACL_MEMCPY_HOST_TO_DEVICE
+            )
+            check_ret("memcpy input", ret)
         output_sizes = []
         if is_dynamic:
             # link https://www.hiascend.com/doc_center/source/zh/canncommercial/80RC1/apiref/appdevgapi/aclpythondevg_01_0159.html
@@ -381,3 +381,4 @@ class ACLModel:
             return
         self.callback_func(inference_result,other_args)
         print(f"end callback, use time: {time.time()-time1}")
+        
