@@ -53,7 +53,7 @@ def parser_args():
             "the number must by 2^xx, like 1, 2, 4, 8, 16, 32, 64, 128, 256... "
             "Note! The higher this number, the longer it will take to compile.",
         type=int,
-        default=8,
+        default=16,
     )
 
     parser.add_argument(

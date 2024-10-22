@@ -62,7 +62,7 @@ class OnnxSession(Session):
             "position_ids": pos_ids,
         })
         self.kv_cache.update(seq_len,result[1])
-        return result
+        return result[0]
     
 # onnxruntime-cann is preview, not work now
 """

@@ -50,7 +50,7 @@
 
 ### 详细运行步骤
 ##### 步骤1：编译模型（以Qwen2-1.5B-Instruct）为例。
-1. 除了上面说的CANN环境安装外，还需额外安装一些python模块。当然，你也可以使用docker构建开发环境，但是注意你的芯片和对应的得是310B系列，如果不是，需要参考官方镜像文档做一些修改。
+1. 除了上面说的CANN环境安装外，还需额外安装一些python模块（当然，你也可以使用docker构建开发环境，但是注意你的芯片和对应的得是310B系列，如果不是，需要参考官方镜像文档做一些修改）。
   ```bash
   cd qwen-ascend-llm
   pip install -r ./requirements.txt
@@ -80,14 +80,14 @@
     --output_model_path="./output/onnx2/qwen2_1.5b_chat.onnx"
   ```
 
-5. 转onnx为om模型, 将修改后的onnx利用atc命令导出到onnx，**注意此处的om_model_path不带`.om`后缀**。运行过程可能会有一些警告，或者子图融合报错，只要结果是提示`success`就说明没啥问题。kv_cache_length长度和第一步导出onnx时的长度保持一致。`--max_prefill_length`为prefill阶段，单次能处理的最大长度，该数值越长则越能降低首字延迟，但是相应的onnx转om的时间也会变长。设置该数值时，一般为2的指数，例如2、4、8、16等等，推理时会利用递归自动匹配合适的prefill长度，例如输入12，会匹配[8, 4]。当前默认数值为8，如果设置为1，则不会开启动态shape推理功能。该脚本会自动检测你的NPU类型，如果你想手动指定，可以加上`--soc_version=xxxx`来指定，例如`--soc_version=Ascend310B1`
+5. 转onnx为om模型, 将修改后的onnx利用atc命令导出到onnx，**注意此处的om_model_path不带`.om`后缀**。运行过程可能会有一些警告，或者子图融合报错，只要结果是提示`success`就说明没啥问题。kv_cache_length长度和第一步导出onnx时的长度保持一致。`--max_prefill_length`为prefill阶段，单次能处理的最大长度，该数值越长则越能降低首字延迟，但是相应的onnx转om的时间也会变长。设置该数值时，一般为2的指数，例如2、4、8、16等等，推理时会利用递归自动匹配合适的prefill长度，例如输入12，会匹配[8, 4]。当前默认数值为16，如果设置为1，则不会开启动态shape推理功能。该脚本会自动检测你的NPU类型，如果你想手动指定，可以加上`--soc_version=xxxx`来指定，例如`--soc_version=Ascend310B1`
   ```bash
   python3 export/onnx2om.py \
     --hf_model_dir="./download/Qwen2-1.5B-Instruct" \
     --onnx_model_path="./output/onnx2/qwen2_1.5b_chat.onnx" \
     --om_model_path="./output/model/qwen2_1.5b_chat" \
     --kv_cache_length=1024 \
-    --max_prefill_length=8
+    --max_prefill_length=16
   ```
 
 
@@ -97,7 +97,7 @@
   python3 ./cli_chat.py \
     --hf_model_dir="./download/Qwen2-1.5B-Instruct" \
     --om_model_path="./output/model/qwen2_1.5b_chat.om" \
-    --max_prefill_length=8
+    --max_prefill_length=16
   ```
 
 - demo展示1（演示模型，qwen1.5-0.5b-chat，未开启动态shape推理）
@@ -113,7 +113,7 @@
   python3 ./api.py \
     --hf_model_dir="./download/Qwen2-1.5B-Instruct" \
     --om_model_path="./output/model/qwen2_1.5b_chat.om" \
-    --max_prefill_length=8
+    --max_prefill_length=16
   ```
 
 - 进入client目录，可以运行里面的文件请求服务端。

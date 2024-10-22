@@ -277,22 +277,17 @@ class Qwen2Attention(nn.Module):
             kv_seq_len += past_key_value.shape[1]
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
-        output_cache = (
-            key_states.transpose(1, 2),
-            value_states.transpose(1, 2)
-        )
+        output_cache = (key_states, value_states)
         if past_key_value is not None:
             # cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
             cache_key = past_key_value[
                 :,
-                :,
                 self.layer_idx * 2 * self.num_key_value_heads: (self.layer_idx * 2 + 1) * self.num_key_value_heads
-            ].transpose(1, 2)
+            ]
             cache_value = past_key_value[
                 :,
-                :,
                 (self.layer_idx * 2 + 1) * self.num_key_value_heads: (self.layer_idx * 2 + 2) * self.num_key_value_heads
-            ].transpose(1, 2)
+            ]
             key_states = torch.cat((cache_key, key_states), dim=2)
             value_states = torch.cat((cache_value, value_states), dim=2)
             # key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
@@ -694,23 +689,18 @@ class Qwen2SdpaAttention(Qwen2Attention):
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
 
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
-        output_cache = (
-            key_states.transpose(1, 2),
-            value_states.transpose(1, 2)
-        )
+        output_cache = (key_states, value_states)
         if past_key_value is not None:
             # cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
             # key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
             cache_key = past_key_value[
                 :,
-                :,
                 self.layer_idx * 2 * self.num_key_value_heads: (self.layer_idx * 2 + 1) * self.num_key_value_heads
-            ].transpose(1, 2)
+            ]
             cache_value = past_key_value[
                 :,
-                :,
                 (self.layer_idx * 2 + 1) * self.num_key_value_heads: (self.layer_idx * 2 + 2) * self.num_key_value_heads
-            ].transpose(1, 2)
+            ]
             key_states = torch.cat((cache_key, key_states), dim=2)
             value_states = torch.cat((cache_value, value_states), dim=2)
 
@@ -981,7 +971,7 @@ class Qwen2Model(Qwen2PreTrainedModel):
         self.embed_tokens = value
 
     @staticmethod
-    def get_masks(input_ids, past_key_values, padding_mask=None):
+    def get_masks(input_ids, past_length, padding_mask=None):
         batch_size, seq_length = input_ids.shape
         full_attention_mask = torch.ones(
             batch_size,
@@ -991,7 +981,6 @@ class Qwen2Model(Qwen2PreTrainedModel):
             # dtype=torch.int64
         )
         full_attention_mask.tril_()
-        past_length = past_key_values.shape[1]
         # if past_length is not None:
         full_attention_mask = torch.cat(
             (
@@ -1110,10 +1099,13 @@ class Qwen2Model(Qwen2PreTrainedModel):
                 sliding_window=self.config.sliding_window,
             )
         """
+        # transpose for past_kv_cache
+        past_key_values = past_key_values.transpose(1, 2)
         # copy from chatglm3-6b for onnx export
+        past_length = past_key_values.shape[2]
         full_attention_mask = self.get_masks(
             input_ids,
-            past_key_values,
+            past_length,
             attention_mask,
         )
         #  === if use Qwen2Attention ===
@@ -1178,7 +1170,9 @@ class Qwen2Model(Qwen2PreTrainedModel):
             # next_cache = next_decoder_cache.to_legacy_cache() if use_legacy_cache else next_decoder_cache
         one_shape = list(presents[0].shape)
         one_shape[2] = one_shape[2] * len(presents)
-        presents = torch.concat(presents, dim=2)
+        presents = torch.concat(presents, dim=1)
+        # transpose for presents
+        presents = presents.transpose(1, 2)
         return (
             hidden_states,
             presents,
