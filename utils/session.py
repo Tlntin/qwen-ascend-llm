@@ -70,7 +70,7 @@ class OnnxSession(Session):
 
 
 class PyTorchSession(Session):
-    def __init__(self, config:InferenceConfig) -> None:
+    def __init__(self, config: InferenceConfig) -> None:
         super().__init__(config)
         self.kv_cache = create_kv_cache(config)
         from export.modeling_qwen2 import Qwen2ForCausalLM

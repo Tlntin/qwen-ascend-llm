@@ -44,7 +44,7 @@ def parser_args():
         default="cpu",
     )
     parser.add_argument(
-        "--cpu_thread" ,
+        "--cpu_thread",
         type=int,
         help="num of cpu thread when run onnx sesstion",
         default=4,

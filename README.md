@@ -1,6 +1,7 @@
 ### 说明
 - 本项目参考了[ascend-llm](https://gitee.com/yinghuo302/ascend-llm)项目。
 - 仅在昇腾310B1与910A上面做了测试，理论上也兼容其他昇腾芯片。
+- 可以用纯CPU运行pytorch或者onnx
 - 仅测试了qwen1.5-0.5b-chat与qwen2-1.5b-instruct模型，理论上支持qwen1.5/qwen2系列所有chat/instruct模型。
 - CANN环境安装可以参考[该教程](https://www.hiascend.com/forum/thread-0286155882998311250-1-1.html)，建议安装CANN 8.0RC2或者更高版本。
 - 如果你没有昇腾NPU设备，但是也想要体验一下试试，可以试试下面的免费云平台，注册即送50积分，可以体验25小时的昇腾910。
@@ -53,6 +54,19 @@
   # openai_function_call.py 测试function_call，该功能启用时建议增加max_input_length和kv_cache_length的长度。
   ```
 
+### （可选）验证模型结构
+- 在完成pytorch模型结构魔改后，需要验证一下模型是否正常。 
+- 验证pytorch CPU环境下，对话是否正常，该步骤主要是验证模型整体结构是否ok，可以多试几个demo，推荐试试`背诵《出师表》`
+  ```bash
+  python3 ./cli_chat.py \
+      --session_type="pytorch" \
+      --hf_model_dir="./download/Qwen2-1.5B-Instruct" \
+      --device_str="cpu" \
+      --dtype="float32" \
+      --torch_dtype="float32" \
+      --max_input_length=1024 \
+      --max_output_length=2048
+  ```
 
 ### 详细运行步骤
 ##### 步骤1：编译模型（以Qwen2-1.5B-Instruct）为例。
