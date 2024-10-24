@@ -244,7 +244,7 @@ class Inference:
         messages = [{"role": "system", "content": system_prompt}]
         # print("prompt: ", prompt)
         with self.lock:
-            self.state['isEnd'],self.state['message'] = False,""   
+            self.state['isEnd'], self.state['message'] = False,""
         if prompt == "":
             return    
         for (use_msg, bot_msg) in history:

@@ -1,3 +1,5 @@
+import torch
+
 from config import InferenceConfig
 from utils.kvcache import create_kv_cache
 import numpy as np
@@ -36,6 +38,7 @@ class Session:
     def rollback(self,seq_len):
         self.kv_cache.rollback(seq_len)
 
+
 class OnnxSession(Session):
     def __init__(self,config:InferenceConfig)->None:
         super().__init__(config)
@@ -62,11 +65,12 @@ class OnnxSession(Session):
             "past_key_values": cache,
             "position_ids": pos_ids,
         })
-        self.kv_cache.update(seq_len,result[1])
+        self.kv_cache.update(seq_len, result[1])
         return result[0]
 
+
 class PyTorchSession(Session):
-    def __init__(self, config:InferenceConfig)->None:
+    def __init__(self, config:InferenceConfig) -> None:
         super().__init__(config)
         self.kv_cache = create_kv_cache(config)
         from export.modeling_qwen2 import Qwen2ForCausalLM
@@ -76,8 +80,10 @@ class PyTorchSession(Session):
             torch_dtype=config.torch_dtype
         ).to(config.device_str)
 
-    def run(self, input_ids:np.ndarray, show_progress=False):
-        seq_len=input_ids.shape[-1]
+    def run(self, input_ids: np.ndarray, show_progress=False):
+        if isinstance(input_ids, np.ndarray):
+            input_ids = torch.from_numpy(input_ids).long().to(self.device_str)
+        seq_len = input_ids.shape[-1]
         cache, mask, pos_ids = self.kv_cache.get_inputs(seq_len)
         # print("input_ids shape/dtype: ", input_ids.shape, input_ids.dtype)
         # print("cache shape/dtype: ", cache.shape, cache.dtype)
@@ -85,7 +91,7 @@ class PyTorchSession(Session):
         # print("pos_ids shape/dtype: ", pos_ids.shape, pos_ids.dtype)
         result = self.model(input_ids, mask, pos_ids, cache)
         self.kv_cache.update(seq_len, result[1])
-        return result[0]
+        return result[0].cpu().detach().numpy()
     
 # onnxruntime-cann is preview, not work now
 """

@@ -3,7 +3,7 @@ onnxruntime==1.18.1
 transformers==4.37.0
 # onnxruntime-cann==1.18.1
 torch==2.1.0
-torch-npu==2.1.0.post6
+# torch-npu==2.1.0.post6
 tqdm
 fastapi
 uvicorn

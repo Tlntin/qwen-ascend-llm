@@ -18,12 +18,12 @@ def parser_args():
     parser.add_argument(
         "--session_type",
         type=str,
-        default="acl",
+        default="pytorch",
         help="acl or onnx",
         choices=["acl", "onnx", "pytorch"],
     )
     parser.add_argument(
-        "--dtype" ,
+        "--dtype",
         type=str,
         help="support float16/float32, if use CPU, only support fp32",
         choices=["float16", "float32"],
@@ -126,8 +126,9 @@ def inference_cli():
             " decode_speed: {:.2f} token/s, ".format(decode_speed),
             " total_speed(prefill+decode): {:.2f} token/s".format(total_speed),
         )
-        
         history.append([input_text, response])
+
+
 if __name__ == '__main__':
     args = parser_args()
     max_prefill_log2 = int(math.log2(args.max_prefill_length))
@@ -143,7 +144,8 @@ if __name__ == '__main__':
         max_input_length=args.max_input_length,
         kv_cache_length=args.max_output_length,
         max_prefill_length=max_prefill_length,
-        dtype=args.dtype
+        dtype=args.dtype,
+        torch_dtype=args.torch_dtype
     )
     # main()
     inference_cli()
