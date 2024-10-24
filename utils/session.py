@@ -5,7 +5,6 @@ from typing import List
 import math
 import time
 import sys
-from utils.engine import ACLModel, init_resource, destroy_resource
 import onnxruntime as ort
 from tqdm import tqdm, trange
 
@@ -23,6 +22,8 @@ class Session:
             return OnnxSession(config)
         elif config.session_type=='acl':
             return AclSession(config)
+        elif config.session_type == "pytorch":
+            return PyTorchSession(config)
         else:
             return None
     
@@ -62,6 +63,28 @@ class OnnxSession(Session):
             "position_ids": pos_ids,
         })
         self.kv_cache.update(seq_len,result[1])
+        return result[0]
+
+class PyTorchSession(Session):
+    def __init__(self, config:InferenceConfig)->None:
+        super().__init__(config)
+        self.kv_cache = create_kv_cache(config)
+        from export.modeling_qwen2 import Qwen2ForCausalLM
+        self.device_str = config.device_str
+        self.model = Qwen2ForCausalLM.from_pretrained(
+            config.hf_model_dir,
+            torch_dtype=config.torch_dtype
+        ).to(config.device_str)
+
+    def run(self, input_ids:np.ndarray, show_progress=False):
+        seq_len=input_ids.shape[-1]
+        cache, mask, pos_ids = self.kv_cache.get_inputs(seq_len)
+        # print("input_ids shape/dtype: ", input_ids.shape, input_ids.dtype)
+        # print("cache shape/dtype: ", cache.shape, cache.dtype)
+        # print("mask shape/dtype: ", mask.shape, mask.dtype)
+        # print("pos_ids shape/dtype: ", pos_ids.shape, pos_ids.dtype)
+        result = self.model(input_ids, mask, pos_ids, cache)
+        self.kv_cache.update(seq_len, result[1])
         return result[0]
     
 # onnxruntime-cann is preview, not work now
@@ -116,6 +139,7 @@ class AclSession(Session):
     context = None
     def __init__(self, config:InferenceConfig):
         super().__init__(config)
+        from utils.engine import ACLModel, init_resource
         self.device_id = config.device_id
         self.context = init_resource(self.device_id)
         self.model = ACLModel(config, self.context)
@@ -132,6 +156,7 @@ class AclSession(Session):
         self.model.reset();
     
     def __del__(self):
+        from utils.engine import destroy_resource
         destroy_resource(self.device_id, self.context)
     
     def decompose_number(self, n, start_index=0):
@@ -196,6 +221,11 @@ class AclSession(Session):
     ):
         self.run_times += seq_length 
         mask, pos_ids = self.model.get_inputs(seq_length)
+        # print("=========================")
+        # print("input_ids: ", input_ids)
+        # print("attention_mask: ", mask)
+        # print("position_ids: ", pos_ids)
+        # print("=========================")
         logits = self.model.inference(
             [input_ids, mask, pos_ids], seq_length, is_dynamic, is_prefill=is_prefill
         )

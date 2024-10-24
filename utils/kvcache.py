@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from typing import Optional,Tuple,List
 from config import InferenceConfig
 # 对KV缓存和输出输出格式进行管理
@@ -6,6 +7,7 @@ class KVCacheManger:
     def __init__(self, config: InferenceConfig) -> None:
         self.num_key_value_heads = config.num_key_value_heads # head len
         self.kv_cache_length = config.kv_cache_length # max_size
+        self.session_type = config.session_type
         self.input_pos = 0
         self.past_kv_size = 0
         self.num_hidden_layers = config.num_hidden_layers  # n_layer
@@ -14,21 +16,35 @@ class KVCacheManger:
         self.per_head_dim = config.per_head_dim # head_dim
         self.past_key_value_shape = config.past_key_value_shape
         self.real_kv_size = 0  # 真正的kv_cache长度
-        if config.dtype == "float16":
-            self.dtype=np.float16
-        elif config.dtype=="float32":
-            self.dtype=np.float32
-        else:
-            raise Exception("only support float16 and float32, not ", np.dtype)
-        # self.kv_cache = None
-        self.kv_cache = np.zeros(self.past_key_value_shape, dtype=self.dtype)
-
-    def create_empty_cache(self):
-        """
-        创建空的kv_cache
-        """
-        if self.cache_format == "huggingface-tensor":
+        self.device_str = config.device_str
+        if self.session_type == "onnx":
+            if config.dtype == "float16":
+                self.dtype=np.float16
+            elif config.dtype=="float32":
+                self.dtype=np.float32
+            else:
+                raise Exception("only support float16 and float32, not ", config.dtype)
+        elif self.session_type == "pytorch":
+            if config.dtype == "float16":
+                self.dtype=torch.float16
+            elif config.dtype=="float32":
+                self.dtype=torch.float32
+            else:
+                raise Exception("only support float16 and float32, not ", config.dtype)
+        if self.session_type == "onnx":
             self.kv_cache = np.zeros(self.past_key_value_shape, dtype=self.dtype)
+        elif self.session_type == "pytorch":
+            self.kv_cache = torch.zeros(self.past_key_value_shape, dtype=self.dtype, device=self.device_str)
+        else:
+            self.kv_cache = None
+
+
+    # def create_empty_cache(self):
+    #     """
+    #     创建空的kv_cache
+    #     """
+    #     if self.cache_format == "huggingface-tensor":
+    #         self.kv_cache = np.zeros(self.past_key_value_shape, dtype=self.dtype)
 
     def update(
         self,
@@ -47,7 +63,7 @@ class KVCacheManger:
 
     def get_inputs(self, seq_len: int) -> List[np.ndarray]:
         """
-        获取指定长度的kv_cache, 顺便生成mask和position_id
+        获取指定长度的kv_cache, 顺便生成mask和position_id，仅用于onnx
         Args:
             seq_len (int): 待获取的kv-cache长度
 
@@ -65,14 +81,26 @@ class KVCacheManger:
             self.per_head_dim
         )
         """ 
-        cache = self.kv_cache[:, :self.past_kv_size]
-        mask = np.ones((1,self.past_kv_size + seq_len), dtype=np.int64)
-        mask[:, self.real_kv_size: self.past_kv_size] = 0
-        pos_id =np.arange(
-            self.input_pos, 
-            self.input_pos + seq_len,
-            dtype=np.int64
-        ).reshape(1,-1)
+        # 因为onnx支持动态库，所以取实际大小的kv-cache, +1是防止cache为空
+        temp_kv_size = self.real_kv_size + 1
+        cache = self.kv_cache[:, :temp_kv_size]
+        if self.session_type == "onnx":
+            mask = np.ones((1, temp_kv_size + seq_len), dtype=np.int64)
+            mask[:, self.real_kv_size: temp_kv_size] = 0
+            pos_id =np.arange(
+                self.input_pos, 
+                self.input_pos + seq_len,
+                dtype=np.int64
+            ).reshape(1,-1)
+        elif self.session_type == "pytorch":
+            mask = torch.ones((1, temp_kv_size + seq_len), dtype=torch.long, device=self.device_str)
+            mask[:, self.real_kv_size: temp_kv_size] = 0
+            pos_id =torch.arange(
+                self.input_pos, 
+                self.input_pos + seq_len,
+                dtype=torch.long,
+                device=self.device_str
+            ).reshape(1,-1)
         return cache, mask, pos_id
     
     def reset(self,num=1):

@@ -1,4 +1,5 @@
 import os
+import time
 import torch
 import argparse
 from modeling_qwen2 import Qwen2ForCausalLM
@@ -28,6 +29,12 @@ parser.add_argument(
     help="model and tokenizer path, only support huggingface model",
     default=os.path.join(project_dir, "download", "Qwen2-1.5B-Instruct")
 )
+parser.add_argument(
+    "--kv_cache_length",
+    help="kv-cache length",
+    type=int,
+    default=2048,
+)
 
 
 args = parser.parse_args()
@@ -42,7 +49,7 @@ else:
     raise Exception("not support dtype, only support float16/float32")
 
 
-def create_kv_cache(config: Qwen2Config, kv_cache_length=1024):
+def create_kv_cache(config: Qwen2Config, kv_cache_length: int = args.kv_cache_length):
     return torch.zeros(
         [
             1,
@@ -54,7 +61,7 @@ def create_kv_cache(config: Qwen2Config, kv_cache_length=1024):
     ).to(device_str)
 
 
-def get_inputs(kv_cache, seq_len: int, real_kv_size=0, input_pos=0, past_kv_size: int = 1024):
+def get_inputs(kv_cache, seq_len: int, real_kv_size=0, input_pos=0, past_kv_size: int = args.kv_cache_length):
     """
     获取指定长度的kv_cache, 顺便生成mask和position_id
     Args:
@@ -115,6 +122,7 @@ now_kv_cache, attn_mask, position_ids = get_inputs(kv_cache1, 1)
 print("now_kv_cache shape: ", now_kv_cache.shape)
 print("attention_mask shape: ", attn_mask.shape)
 print("position_ids shape: ", position_ids.shape)
+st = time.time()
 outputs = model.forward(
     input_ids[:, :1],
     attn_mask,
@@ -123,6 +131,8 @@ outputs = model.forward(
     # use_cache=True,
     # output_attentions=True,
 )
+et = time.time()
+print("duration: ", et - st)
 print("==== pytorch runtime ====")
 print("output length: ", len(outputs))
 logits = outputs[0]  # 1: -0.10800

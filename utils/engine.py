@@ -3,6 +3,7 @@ from typing import Dict, List
 import acl
 import numpy as np
 import os
+import gc
 from functools import reduce
 from operator import mul
 import ctypes
@@ -43,7 +44,6 @@ def mmap_file(file_path):
 
     # 关闭文件描述符，映射区域仍然有效  
     os.close(file_descriptor)  
-    
     # 返回映射区域的地址  
     return mapped_memory,file_size
 
@@ -52,18 +52,27 @@ def check_ret(str,ret):
         print(f"return code is {ret}, detail: {str}",flush=True) 
 
 def init_resource(device_id: int):
+    print("[INFO] acl init")
     ret = acl.init()
     check_ret("init", ret)
+    print(f"[INFO] acl set device, device_id: {device_id}")
     ret = acl.rt.set_device(device_id)
     check_ret("set_device", ret)
-    context,ret = acl.rt.create_context(device_id)
+    print(f"[INFO] acl create context")
+    context, ret = acl.rt.create_context(device_id)
     check_ret("create_context", ret)
     return context
 
 def destroy_resource(device_id: int, context):
+    print("[INFO] acl reset device")
     ret = acl.rt.reset_device(device_id)
+    check_ret("reset device", ret)
+    print("[INFO] acl finalize")
     ret = acl.finalize()
+    check_ret("finalize", ret)
+    print("[INFO] destory context")
     ret = acl.rt.destroy_context(context)
+    check_ret("destory context", ret)
 
 dtype2NpType = {0:np.float32,1:np.float16,2:np.int8,3:np.int32,9:np.int64}
 
@@ -88,13 +97,18 @@ class ACLModel:
         self.inputs:List[Dict[str,]] = []
         self.outputs:List[Dict[str,]] =  []
         self.config = config
+        self.past_key_value_shape = config.past_key_value_shape
+        self.half_past_key_value_shape = list(config.past_key_value_shape)
+        self.half_past_key_value_shape[1] = self.half_past_key_value_shape[1] // 2
         self.load_model(config.om_model_path)
         self.allocate_memory()
         if not callback:
             return
         self.stream, ret = acl.rt.create_stream()
+        check_ret("create stream", ret)
         self.tid, ret = acl.util.start_thread(self._process_callback,
                                          [self.context, 50])
+        check_ret("start thread", ret)
         check_ret("acl.util.start_thread", ret)
         ret = acl.rt.subscribe_report(self.tid, self.stream)
         check_ret("acl.rt.subscribe_report", ret)
@@ -117,8 +131,14 @@ class ACLModel:
             self.per_head_dim
         )
         """ 
-        mask = np.ones((1,self.past_kv_size + seq_len), dtype=np.int64)
-        mask[:, self.real_kv_size: self.past_kv_size] = 0
+        temp_seq_len = self.real_kv_size + seq_len
+        if temp_seq_len <= self.kv_cache_length // 2:
+            temp_kv_size = self.kv_cache_length // 2
+        else:
+            temp_kv_size = self.kv_cache_length
+            
+        mask = np.ones((1, temp_kv_size + seq_len), dtype=np.int64)
+        mask[:, self.real_kv_size: temp_kv_size] = 0
         pos_id =np.arange(
             self.input_pos, 
             self.input_pos + seq_len,
@@ -186,12 +206,61 @@ class ACLModel:
         Args:
             model_path (_type_): _description_
         """
-        model_add, model_size = mmap_file(model_path)
-        self.model_id, ret = acl.mdl.load_from_mem(model_add, model_size)
-        
-        #self.model_id, ret = acl.mdl.load_from_file(model_path)
+        # 方法1：通过map的方式加载,大概24秒
+        # model_add, model_size = mmap_file(model_path)
+        # self.model_id, ret = acl.mdl.load_from_mem(model_add, model_size)
+        # check_ret("load model",ret)
+        # munmap_func(model_add, model_size)
+        # 方法2：直接加载model，用时34秒
+        # self.model_id, ret = acl.mdl.load_from_file(model_path)
+        # check_ret("load model",ret)
+        # 方法3：将模型加载到device内存中 
+        # 先获取模型大小
+        model_buffer_size = os.path.getsize(model_path)
+        # 分配模型buffer到device内存中
+        model_buffer, ret = acl.rt.malloc(model_buffer_size, ACL_MEM_MALLOC_HUGE_FIRST)
+        p_model_buffer = model_buffer
+        check_ret("alloc model buffer",ret)
+        # 分块读取模型文件，然后将其拷贝到device model中
+        # 块大小（例如 50MB）
+        chunk_size = 50 * 1024 * 1024
+        have_load_size = 0
+        with open(model_path, 'rb') as file:
+            while True:
+                # 读取一块数据
+                chunk = file.read(chunk_size)
+                chunk_bytes = len(chunk)
+                # 如果读取的数据为空，说明已经读取完毕
+                if not chunk:
+                    break
+                # 获取这块数据的内存地址
+                writable_buffer = ctypes.create_string_buffer(chunk)
+                chunk_address = ctypes.addressof(writable_buffer)
+                ret = acl.rt.memcpy(
+                    p_model_buffer,
+                    model_buffer_size - have_load_size,
+                    chunk_address,
+                    chunk_bytes,
+                    ACL_MEMCPY_HOST_TO_DEVICE
+                )
+                del writable_buffer
+                check_ret("memcpy input", ret)
+                progress = have_load_size * 100 / model_buffer_size
+                print(f"\r[INFO] load model buffer {progress:.2f}%", end="")
+                have_load_size += chunk_bytes
+                p_model_buffer += chunk_bytes
+        print("\r[INFO] load model buffer 100.00%")
+        gc.collect()
+        st = time.time()
+        print("[INFO] load model from memory, please wait a monment...")
+        self.model_id, ret = acl.mdl.load_from_mem(model_buffer, model_buffer_size)
         check_ret("load model",ret)
-        munmap_func(model_add, model_size)
+        et = time.time()
+        # 模型加载完后，model_buffer实测可以清理掉了，节省大量空间
+        ret = acl.rt.free(model_buffer)
+        check_ret(f"free model buffer device memory", ret)
+        print("[INFO] load model duration: ", et - st)
+        print("[INFO] get model desc")
         self.model_desc = acl.mdl.create_desc()
         ret = acl.mdl.get_desc(self.model_desc, self.model_id)
         check_ret("get model desc",ret)
@@ -255,6 +324,7 @@ class ACLModel:
         """
         释放内存
         """
+        print("[INFO] free input and output buffer")
         for i, item in enumerate(self.input_data):
             ret = acl.rt.free(item["buffer"])
             check_ret(f"free input[{i}] device memory",ret)
@@ -307,18 +377,34 @@ class ACLModel:
                 self.model_desc, "ascend_mbatch_shape_data"
             )
             check_ret("get_input_index_by_name", ret)
-            dynamic_dims = [
-                # input_ids
-                self.max_batch,
-                seq_length, 
-                # attention_mask
-                self.max_batch,
-                seq_length + self.kv_cache_length, 
-                # position_ids
-                self.max_batch,
-                seq_length  
-            ]
-            dynamic_dims += self.config.past_key_value_shape
+            # 新逻辑，将kv_cache_length切成两片
+            if (self.real_kv_size + seq_length) > self.kv_cache_length // 2:
+                dynamic_dims = [
+                    # input_ids
+                    self.max_batch,
+                    seq_length, 
+                    # attention_mask
+                    self.max_batch,
+                    seq_length + self.kv_cache_length, 
+                    # position_ids
+                    self.max_batch,
+                    seq_length  
+                ]
+                dynamic_dims += self.past_key_value_shape
+            else:
+                dynamic_dims = [
+                    # input_ids
+                    self.max_batch,
+                    seq_length, 
+                    # attention_mask
+                    self.max_batch,
+                    seq_length + self.kv_cache_length // 2, 
+                    # position_ids
+                    self.max_batch,
+                    seq_length  
+                ]
+                dynamic_dims += self.half_past_key_value_shape
+                
             # will set dynamic input shape
             ret = acl.mdl.set_input_dynamic_dims(
                 self.model_id,

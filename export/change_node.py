@@ -17,6 +17,9 @@ if not os.path.exists(old_onnx_dir):
 new_onnx_dir = os.path.join(output_dir, "onnx2")
 if not os.path.exists(new_onnx_dir):
     os.mkdir(new_onnx_dir)
+else:
+    for file in os.listdir(new_onnx_dir):
+        os.remove(os.path.join(new_onnx_dir, file))
 
 now_dir = os.path.dirname(os.path.abspath(__file__))
 project_dir = os.path.dirname(now_dir)

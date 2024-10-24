@@ -1,4 +1,5 @@
 import os
+import time
 import numpy as np
 import onnxruntime
 import argparse
@@ -28,6 +29,12 @@ parser.add_argument(
     type=str,
     default=os.path.join(project_dir, "output", "onnx", "qwen2_1.5b_chat.onnx")
 )
+parser.add_argument(
+    "--kv_cache_length",
+    help="kv-cache length",
+    type=int,
+    default=2048,
+)
 args = parser.parse_args()
 
 if args.dtype == "float16":
@@ -38,7 +45,7 @@ else:
     raise Exception("not support dtype, only support float16/float32")
 
 
-def create_kv_cache(config: Qwen2Config, kv_cache_length=1024):
+def create_kv_cache(config: Qwen2Config, kv_cache_length=args.kv_cache_length):
     return np.zeros(
         [
             1,
@@ -50,7 +57,7 @@ def create_kv_cache(config: Qwen2Config, kv_cache_length=1024):
     )
 
 
-def get_inputs(kv_cache, seq_len: int, real_kv_size=0, input_pos=0, past_kv_size: int = 1024):
+def get_inputs(kv_cache, seq_len: int, real_kv_size=0, input_pos=0, past_kv_size: int = args.kv_cache_length):
     """
     获取指定长度的kv_cache, 顺便生成mask和position_id
     Args:
@@ -122,12 +129,15 @@ now_kv_cache, attn_mask, position_ids = get_inputs(kv_cache1, 1)
 print("now_kv_cache shape: ", now_kv_cache.shape)
 print("attention_mask shape: ", attn_mask.shape)
 print("position_ids shape: ", position_ids.shape)
+st = time.time()
 outputs = llm_session.run(None, {
     "input_ids": input_ids[:, :1],
     "attention_mask": attn_mask,
     "position_ids": position_ids,
     "past_key_values": now_kv_cache,
 })
+et = time.time()
+print("duration: ", et - st)
 print("==== onnx runtime ====")
 print("output length: ", len(outputs))
 logits = outputs[0]

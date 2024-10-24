@@ -49,19 +49,25 @@ parser.add_argument(
     default=1,
 )
 parser.add_argument(
+    "--cpu_thread" ,
+    type=int,
+    help="num of cpu thread when convert onnx to om",
+    default=1,
+)
+parser.add_argument(
     "--max_prefill_length",
     help="max prefill length in first inference. "
         "Attention max_prefill_length + max_output_length <= kv_cache_length. "
         "the number must by 2^xx, like 1, 2, 4, 8, 16, 32, 64, 128, 256... "
         "Note! The higher this number, the longer it will take to compile.",
     type=int,
-    default=16
+    default=8
 )
 parser.add_argument(
     "--kv_cache_length",
     help="kv-cache length",
     type=int,
-    default=1024,
+    default=2048,
 )
 
 
@@ -114,10 +120,10 @@ prefill_length_range = [2 ** idx for idx in prefill_length_range]
 assert (max_prefill_length < kv_cache_length), \
     print("max_input_length max be smaller than kv_cache_length, because max_input_length + max_output_length <= kv_cache")
 input_ids_length_range = prefill_length_range
-attention_length_range = [
-    length + kv_cache_length
-    for length in prefill_length_range
-]
+# attention_length_range = [
+#     length + kv_cache_length
+#     for length in prefill_length_range
+# ]
 position_length_range = prefill_length_range
 input_ids_shape = [
     f"1~{max_batch}" if max_batch > 1 else "1",
@@ -132,14 +138,21 @@ position_ids_shape = [
     "-1" if max_prefill_length > 1 else "1"
 ]
 dynamic_dims = []
-for dynamic_dim in zip(
-    input_ids_length_range, attention_length_range, position_length_range
-):
-    dynamic_dim = [str(dim) for dim in dynamic_dim]
-    dynamic_dims.append(",".join(dynamic_dim))
+for dynamic_kv_cache_length in [
+    kv_cache_length // 2,
+    kv_cache_length
+]:
+    for dynamic_dim in zip(input_ids_length_range, position_length_range):
+        new_dynamic_dim = [
+            str(dynamic_dim[0]), # input_ids
+            str(dynamic_dim[0] + dynamic_kv_cache_length), # attention_mask_shape
+            str(dynamic_dim[1]), # position_ids
+            str(dynamic_kv_cache_length), # past_key_values
+        ]
+        dynamic_dims.append(",".join(new_dynamic_dim))
 past_key_values_shape = [
     f"1~{max_batch}" if max_batch > 1 else "1",
-    kv_cache_length,
+    "-1" if max_prefill_length > 1 else kv_cache_length,
     num_hidden_layers * 2 * num_key_value_heads,
     per_head_dim
 ]
@@ -152,8 +165,14 @@ if args.soc_version == "auto":
 else:
     soc_version = args.soc_version
 command_lines = [
+    # reduce memory useage
+    "export MS_DEV_FORCE_ACL=1 && ",
+    "export MS_ENABLE_GE=1 && ",
+    "export TE_PARALLEL_COMPILER={} &&".format(args.cpu_thread),
+    "export MAX_COMPILE_CORE_NUMBER={} &&".format(args.cpu_thread),
     "atc",
     "--framework=5",
+    "--host_env_cpu=aarch64",
     '--model="{}"'.format(args.onnx_model_path),
     '--output="{}"'.format(args.om_model_path),
     "--soc_version={}".format(soc_version),

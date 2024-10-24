@@ -8,11 +8,12 @@ from threading import Lock
 from utils.session import Session
 from config import InferenceConfig
 from tqdm import trange, tqdm
+import torch
 
 
 
 class Inference:
-    def __init__(self, config:InferenceConfig) -> None:
+    def __init__(self, config: InferenceConfig) -> None:
         self.max_input_length = config.max_input_length
         self.max_output_length = config.max_output_length
         # self.tokenizer=Tokenizer(config.tokenizer)
@@ -22,7 +23,16 @@ class Inference:
         self.sampling_method = config.sampling_method
         self.sampling_value = config.sampling_value
         self.temperature = config.temperature
-        self.session=Session.fromConfig(config)
+        self.session = Session.fromConfig(config)
+        self.session_type = config.session_type
+        if config.device_str == "cpu":
+            self.torch_device = torch.device("cpu")
+        elif config.device_str == "cuda":
+            self.torch_device = torch.device("cuda")
+        elif config.device_str == "npu":
+            self.torch_device = torch.device("npu")
+        else:
+            raise Exception(f"unsport device {config.device_str}")
         # self.prompt=config.prompt
         self.kv_cache_length = config.kv_cache_length
         self.state: dict = {"code":200,"isEnd":False,"message":""}
@@ -30,7 +40,7 @@ class Inference:
         self.lock = Lock()
         self.first = True
         # self.stop_mp = {"[|Human|]":6,"[|AI|]":5,"<|assistant|>":6,"<|user|>":5}
-        print("init success")
+        print("[INFO] init success")
 
 
     def generate_cache(self, prompt: str):
@@ -141,9 +151,16 @@ class Inference:
             tokenize=False,
             add_generation_prompt=True
         )
-        input_ids = self.tokenizer(
-            [text], return_tensors="np"
-        )["input_ids"].astype(np.int64).reshape(1, -1)
+        if self.session_type in ["onnx", "acl"]:
+            input_ids = self.tokenizer(
+                [text], return_tensors="np"
+            )["input_ids"].astype(np.int64).reshape(1, -1)
+        elif self.session_type == "pytorch":
+            input_ids = self.tokenizer(
+                [text], return_tensors="pt"
+            )["input_ids"].to(torch.long).reshape(1, -1).to(self.torch_device)
+        else:
+            raise Exception(f"unknown session_type {self.session_type}")
         input_ids = input_ids[:, -self.max_input_length:]
         # print("input_ids shape: ", input_ids.shape)
         self.first = False
@@ -240,9 +257,16 @@ class Inference:
             tokenize=False,
             add_generation_prompt=True
         )
-        input_ids = self.tokenizer(
-            [text], return_tensors="np"
-        )["input_ids"].astype(np.int64).reshape(1, -1)
+        if self.session_type in ["onnx", "acl"]:
+            input_ids = self.tokenizer(
+                [text], return_tensors="np"
+            )["input_ids"].astype(np.int64).reshape(1, -1)
+        elif self.session_type == "pytorch":
+            input_ids = self.tokenizer(
+                [text], return_tensors="pt"
+            )["input_ids"].to(torch.long).reshape(1, -1).to(self.torch_device)
+        else:
+            raise Exception(f"unknown session_type {self.session_type}")
         input_ids = input_ids[:, -self.max_input_length:]
         self.first = False
         ids_list = []

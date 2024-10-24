@@ -61,22 +61,31 @@
   cd qwen-ascend-llm
   pip install -r ./requirements.txt
   ```
-2. 导出onnx，默认kv-cache长度为1024，可以根据自己的内存、显存来设置更大参数。
+2. 导出onnx，当前我设置的kv-cache长度为2048，可以根据自己的内存、显存来设置更大参数，最大则不建议超过`max_position_embeddings`这个数，可以去模型里面的config.json文件里面看，qwen2-1.5B-Instruct里面，这个数值为`32768`
   ```bash
   python3 export/export_onnx.py \
     --device_str=npu \
     --dtype=float16 \
     --hf_model_dir="./download/Qwen2-1.5B-Instruct" \
     --onnx_model_path="./output/onnx/qwen2_1.5b_chat.onnx" \
-    --kv_cache_length=1024
+    --kv_cache_length=2048
   ```
 
 3. 验证onnx，返回项目根目录，运行cli_chat.py，测试一下onnx对话是否正常（注意：由于是cpu运行，所以速度较慢，请耐心等待）。
+  - `--max_input_length`为单次最大可以输入是数据量，该数值必须小于编译onnx的时候指定的`--kv_cache_length` 
+  - `--max_output_length`则必须和之前转onnx的时候指定的`--kv_cache_length`保持一致，否则onnx输出将会异常。
+  - 注：最大可以生成token数=`max_output_length`-min(max_input_length, 实际输入的token数)
+  - npu转出的onnx，dtype取float16，cpu转出来的onnx，dtype取float32
+  - `--cpu_thread`根据你的cpu线程数设置，默认取4
   ```bash
   python3 ./cli_chat.py \
     --session_type=onnx \
     --hf_model_dir="./download/Qwen2-1.5B-Instruct" \
-    --onnx_model_path="./output/onnx/qwen2_1.5b_chat.onnx"
+    --onnx_model_path="./output/onnx/qwen2_1.5b_chat.onnx" \
+    --dtype="float16" \
+    --cpu_thread=4 \
+    --max_input_length=1024 \
+    --max_output_length=2048
   ```
 
 4. 改变onnx结构，目前导出的Trilu算子和Cast算子有些问题，atc命令无法识别，需要改一下结构。
@@ -86,24 +95,38 @@
     --output_model_path="./output/onnx2/qwen2_1.5b_chat.onnx"
   ```
 
-5. 转onnx为om模型, 将修改后的onnx利用atc命令导出到onnx，**注意此处的om_model_path不带`.om`后缀**。运行过程可能会有一些警告，或者子图融合报错，只要结果是提示`success`就说明没啥问题。kv_cache_length长度和第一步导出onnx时的长度保持一致。`--max_prefill_length`为prefill阶段，单次能处理的最大长度，该数值越长则越能降低首字延迟，但是相应的onnx转om的时间也会变长。设置该数值时，一般为2的指数，例如2、4、8、16等等，推理时会利用递归自动匹配合适的prefill长度，例如输入12，会匹配[8, 4]。当前默认数值为16，如果设置为1，则不会开启动态shape推理功能。该脚本会自动检测你的NPU类型，如果你想手动指定，可以加上`--soc_version=xxxx`来指定，例如`--soc_version=Ascend310B1`
+5. 转onnx为om模型, 将修改后的onnx利用atc命令导出到onnx，**注意此处的om_model_path不带`.om`后缀**。
+  - 运行过程可能会有一些警告，或者子图融合报错，只要结果是提示`success`就说明没啥问题。
+  - kv_cache_length长度和第一步导出onnx时的长度保持一致。
+  - `--max_prefill_length`为prefill阶段，单次能处理的最大长度，该数值越长则越能降低首字延迟，但是相应的onnx转om的时间也会变长。设置该数值时，一般为2的指数，例如2、4、8、16等等，推理时会利用递归自动匹配合适的prefill长度，例如输入12，会匹配[8, 4]。当前默认数值为4，如果设置为1，则不会开启动态shape推理功能。
+  - 该脚本会自动检测你的NPU类型，如果你想手动指定，可以加上`--soc_version=xxxx`来指定，例如`--soc_version=Ascend310B1`
+  - `--kv_cache_length`的数值必须前面转onnx的时候指定的`--kv_cache_length`保持一致，否则大概率会转换失败。
+  - `--cpu_thread`为转onnx为om时，开启的cpu线程数，默认为1个线程并行编译，如果内存很多（每个线程单独占用一份内存，所以很费内存），可以调高一些。
   ```bash
   python3 export/onnx2om.py \
     --hf_model_dir="./download/Qwen2-1.5B-Instruct" \
     --onnx_model_path="./output/onnx2/qwen2_1.5b_chat.onnx" \
     --om_model_path="./output/model/qwen2_1.5b_chat" \
-    --kv_cache_length=1024 \
-    --max_prefill_length=16
+    --kv_cache_length=2048 \
+    --cpu_thread=1 \
+    --max_prefill_length=4
   ```
 
 
 ##### 步骤2：在终端运行模型进行对话
-- 使用下面的命令直接运行模型，`--max_prefill_length`需要和上面编译的时候使用的数值相同。
+- 使用下面的命令直接运行模型
+  - `--max_prefill_length`需要和上面编译om模型时使用的数值相同。
+  - `--max_input_length`为单次最大可以输入是数据量，该数值必须小于编译onnx的时候指定的`--kv_cache_length` 
+  - `--max_output_length`则必须和之前转onnx的时候指定的`--kv_cache_length`保持一致，否则onnx输出将会异常。
+  - 注：最大可以生成token数=`max_output_length`-min(max_input_length, 实际输入的token数)
   ```bash
   python3 ./cli_chat.py \
+    --session_type="acl" \
     --hf_model_dir="./download/Qwen2-1.5B-Instruct" \
     --om_model_path="./output/model/qwen2_1.5b_chat.om" \
-    --max_prefill_length=16
+    --max_input_length=1024 \
+    --max_output_length=2048 \
+    --max_prefill_length=4
   ```
 
 - demo展示1（演示模型，qwen1.5-0.5b-chat，未开启动态shape推理）
@@ -119,7 +142,9 @@
   python3 ./api.py \
     --hf_model_dir="./download/Qwen2-1.5B-Instruct" \
     --om_model_path="./output/model/qwen2_1.5b_chat.om" \
-    --max_prefill_length=16
+    --max_input_length=1024 \
+    --max_output_length=2048 \
+    --max_prefill_length=4
   ```
 
 - 进入client目录，可以运行里面的文件请求服务端。

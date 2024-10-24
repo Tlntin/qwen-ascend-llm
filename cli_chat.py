@@ -20,7 +20,34 @@ def parser_args():
         type=str,
         default="acl",
         help="acl or onnx",
-        choices=["acl", "onnx"],
+        choices=["acl", "onnx", "pytorch"],
+    )
+    parser.add_argument(
+        "--dtype" ,
+        type=str,
+        help="support float16/float32, if use CPU, only support fp32",
+        choices=["float16", "float32"],
+        default="float32",
+    )
+    parser.add_argument(
+        "--torch_dtype",
+        type=str,
+        help="support float16/float32, if use CPU, only support fp32",
+        choices=["float16", "float32"],
+        default="float32",
+    )
+    parser.add_argument(
+        "--device_str",
+        type=str,
+        help="support cpu, cuda, npu, only activate when sesstion_type is pytorch",
+        choices=["cpu", "cuda", "npu"],
+        default="cpu",
+    )
+    parser.add_argument(
+        "--cpu_thread" ,
+        type=int,
+        help="num of cpu thread when run onnx sesstion",
+        default=4,
     )
     parser.add_argument(
         '--onnx_model_path',
@@ -44,7 +71,7 @@ def parser_args():
         "--max_input_length",
         help="max input length",
         type=int,
-        default=512,
+        default=1024,
     )
     parser.add_argument(
         "--max_prefill_length",
@@ -53,14 +80,13 @@ def parser_args():
             "the number must by 2^xx, like 1, 2, 4, 8, 16, 32, 64, 128, 256... "
             "Note! The higher this number, the longer it will take to compile.",
         type=int,
-        default=16,
+        default=4,
     )
-
     parser.add_argument(
         "--max_output_length",
         help="max output length (contain input + new token)",
         type=int,
-        default=1024,
+        default=2048,
     )
     return parser.parse_args()
 
@@ -110,12 +136,14 @@ if __name__ == '__main__':
         hf_model_dir=args.hf_model_dir,
         om_model_path=args.om_model_path,
         onnx_model_path=args.onnx_model_path,
+        cpu_thread=args.cpu_thread,
         session_type=args.session_type,
         max_batch=args.max_batch,
         max_output_length=args.max_output_length,
         max_input_length=args.max_input_length,
         kv_cache_length=args.max_output_length,
         max_prefill_length=max_prefill_length,
+        dtype=args.dtype
     )
     # main()
     inference_cli()

@@ -64,7 +64,7 @@ def parser_arguments():
         "--kv_cache_length",
         help="kv-cache length",
         type=int,
-        default=1024,
+        default=2048,
     )
     return parser.parse_args()
 
@@ -123,7 +123,7 @@ def export_onnx(
     output_names = ["logits", "out_key_values"]
     dynamic_axes = {
         "input_ids": {0: "batch_size", 1: "seq_length"},
-        "attention_mask": {0: "batch_size", 1: "seq_length+kv_len"},
+        "attention_mask": {0: "batch_size", 1: "seq_length + kv_len"},
         "position_ids": {0: "batch_size", 1: "seq_length"},
         "past_key_values": {0: "batch_size", 1: "kv_len"},
     }
