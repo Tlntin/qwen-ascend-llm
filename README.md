@@ -149,6 +149,9 @@
 - demo展示2（演示模型，qwen2-1.5b-instruct，开启动态shape推理, max_prefill_length=8）
 ![](./image/qwen2-1.5b-instruct.gif)
 
+- demo展示3（演示模型，qwen2-1.5b-instruct，onnx cpu推理，CPU: i9-10900k 10核20线程）
+![](./image/qwen2_1.5b_onnx_chat_cpu.png)
+
 
 ##### 步骤3：部署兼容OpenAI的api
 - 使用下面的命令直接运行api，`--max_prefill_length`需要和上面编译的时候使用的数值相同。

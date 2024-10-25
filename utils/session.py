@@ -85,14 +85,10 @@ class PyTorchSession(Session):
             input_ids = torch.from_numpy(input_ids).long().to(self.device_str)
         seq_len = input_ids.shape[-1]
         cache, mask, pos_ids = self.kv_cache.get_inputs(seq_len)
-        # print("input_ids shape/dtype: ", input_ids.shape, input_ids.dtype)
-        # print("cache shape/dtype: ", cache.shape, cache.dtype)
-        # print("mask shape/dtype: ", mask.shape, mask.dtype)
-        # print("pos_ids shape/dtype: ", pos_ids.shape, pos_ids.dtype)
         result = self.model(input_ids, mask, pos_ids, cache)
         self.kv_cache.update(seq_len, result[1])
         return result[0].cpu().detach().numpy()
-    
+
 # onnxruntime-cann is preview, not work now
 """
 class CANNOnnxSession(Session):
