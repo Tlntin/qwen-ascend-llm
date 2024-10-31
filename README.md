@@ -102,7 +102,7 @@
     --max_output_length=2048
   ```
 
-4. 改变onnx结构，目前导出的Trilu算子和Cast算子有些问题，atc命令无法识别，需要改一下结构。
+4. 改变onnx结构，目前导出的Trilu算子有些问题，atc命令无法识别，需要改一下结构。
   ```bash
   python3 export/change_node.py \
     --input_model_path="./output/onnx/qwen2_1.5b_chat.onnx" \
@@ -112,7 +112,7 @@
 5. 转onnx为om模型, 将修改后的onnx利用atc命令导出到onnx，**注意此处的om_model_path不带`.om`后缀**。
   - 运行过程可能会有一些警告，或者子图融合报错，只要结果是提示`success`就说明没啥问题。
   - kv_cache_length长度和第一步导出onnx时的长度保持一致。
-  - `--max_prefill_length`为prefill阶段，单次能处理的最大长度，该数值越长则越能降低首字延迟，但是相应的onnx转om的时间也会变长。设置该数值时，一般为2的指数，例如2、4、8、16等等，推理时会利用递归自动匹配合适的prefill长度，例如输入12，会匹配[8, 4]。当前默认数值为4，如果设置为1，则不会开启动态shape推理功能。
+  - `--max_prefill_length`为prefill阶段，单次能处理的最大长度，该数值越长则越能降低首字延迟，但是相应的onnx转om的时间也会变长。设置该数值时，一般为2的指数，例如2、4、8、16等等，推理时会利用递归自动匹配合适的prefill长度，例如输入12，会匹配[8, 4]。当前默认数值为4，如果设置为1，则不会开启动态shape推理功能。**注意：开启动态shape后，模型体积会有50%-100%的增长，并且推理时占用的内存也会相应增长，如果对内存比较敏感，则建议关闭动态shape。**
   - 该脚本会自动检测你的NPU类型，如果你想手动指定，可以加上`--soc_version=xxxx`来指定，例如`--soc_version=Ascend310B1`
   - `--kv_cache_length`的数值必须前面转onnx的时候指定的`--kv_cache_length`保持一致，否则大概率会转换失败。
   - `--cpu_thread`为转onnx为om时，开启的cpu线程数，默认为1个线程并行编译，如果内存很多（每个线程单独占用一份内存，所以很费内存），可以调高一些。
@@ -172,6 +172,29 @@
   ```
 
 - functional_call demo展示(使用qwen2-1.5b-instruct)![](./image/qwen2-1.5b-instruct-functional-call.jpg)
+
+### （可选）对比onnx和om网络层结果
+- 假设编译好的om文件推理输出异常（比如origin或者fp32精度正常，fp16异常），而onnx输出正常，我们需要找到异常的网络层结构，我们需要使用工具来导出onnx和om每一层的输入输出结果，看看是哪一层开始溢出或者结果差异较大。
+- 这里我们可以采用昇腾官方提供的msit工具，下面是msit的开源主页：[链接](https://gitee.com/ascend/msit)
+- 我们需要安装msit工具，安装方法参考官方网站：[链接](https://gitee.com/ascend/msit/tree/master/msit/docs/install)
+  ```bash
+  pip install msit
+  msit install compare
+  ```
+- 安装完成后，开始做文件对比，对比的时候建议使用om静态图做对比，即转onnx为om时，设置max_prefill_length=1。
+- 对比的时候，模型越小越好，建议可以用Qwen-0.5B-Instruct模型，这样可以节省时间，也方便分析。
+- 对比方法参考官方网站：[链接](https://gitee.com/ascend/msit/tree/master/msit/docs/debug/compare#/ascend/msit/blob/master/msit/docs/install/README.md)，目前我已经将其封装成了一个python代码，下面是一个示例：
+  ```bash
+  python3 export/compare.py \
+	  --hf_model_dir="./download/Qwen2-0.5B-Instruct" \
+    --onnx_model_path="./output/onnx2/qwen2_0.5b_chat.onnx" \
+    --om_model_path="./output/model/qwen2_0.5b_chat.om" \
+    --kv_cache_length=2048 \
+    --cpu_thread=1 \
+    --dtype="float16" \
+    --max_prefill_length=1
+  ```
+- 对比结果，参考官网网站说明：[链接](https://gitee.com/ascend/msit/blob/master/msit/examples/cli/debug/compare/result_analyse/README.md)
 
 ### 当前功能
 - [x] 导出onnx, om模型

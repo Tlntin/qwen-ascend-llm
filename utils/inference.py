@@ -127,7 +127,7 @@ class Inference:
         history=None,
         sampling_config: dict = {},
         system_prompt: str = "You are a helpful assistant.",
-        max_new_tokens: int = 512,
+        max_new_tokens: int = 1024,
         do_speed_test: bool = False,
         show_progress: bool = False,
     ):
@@ -234,7 +234,7 @@ class Inference:
         history=None,
         sampling_config: dict = {},
         system_prompt: str="You are a helpful assistant.",
-        max_new_tokens: int = 512,
+        max_new_tokens: int = 1024,
         show_progress: bool = False,
     ):
         if history is None:
@@ -322,7 +322,7 @@ class Inference:
         self,
         input_ids,
         sampling_config: dict = {},
-        max_new_tokens: int = 512,
+        max_new_tokens: int = 1024,
         show_progress: bool = False,
     ):
         sampling_value = sampling_config.get("sampling_value", self.sampling_value)

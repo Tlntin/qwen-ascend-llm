@@ -137,6 +137,12 @@ position_ids_shape = [
     f"1~{max_batch}" if max_batch > 1 else "1",
     "-1" if max_prefill_length > 1 else "1"
 ]
+past_key_values_shape = [
+    f"1~{max_batch}" if max_batch > 1 else "1",
+    "-1" if max_prefill_length > 1 else kv_cache_length,
+    num_hidden_layers * 2 * num_key_value_heads,
+    per_head_dim
+]
 dynamic_dims = []
 for dynamic_kv_cache_length in [
     kv_cache_length // 2,
@@ -150,12 +156,7 @@ for dynamic_kv_cache_length in [
             str(dynamic_kv_cache_length), # past_key_values
         ]
         dynamic_dims.append(",".join(new_dynamic_dim))
-past_key_values_shape = [
-    f"1~{max_batch}" if max_batch > 1 else "1",
-    "-1" if max_prefill_length > 1 else kv_cache_length,
-    num_hidden_layers * 2 * num_key_value_heads,
-    per_head_dim
-]
+
 past_key_values_shape = [str(x) for x in past_key_values_shape]
 if args.soc_version == "auto":
     print("[INFO] soc_version is `auto`, will auto detect soc version")
@@ -172,11 +173,15 @@ command_lines = [
     "export MAX_COMPILE_CORE_NUMBER={} &&".format(args.cpu_thread),
     "atc",
     "--framework=5",
-    "--host_env_cpu=aarch64",
+    # "--host_env_cpu=aarch64",
     '--model="{}"'.format(args.onnx_model_path),
     '--output="{}"'.format(args.om_model_path),
     "--soc_version={}".format(soc_version),
-    "--precision_mode=must_keep_origin_dtype",
+    # "--precision_mode=must_keep_origin_dtype",
+    # "--precision_mode_v2=origin",
+    "--precision_mode_v2=mixed_float16",
+    "--modify_mixlist={}".format(os.path.join(project_dir, "ops_info.json")),
+    # "--op_select_implmode=high_precision_for_all",
     "--input_format=ND",
     '--input_shape="input_ids:{};attention_mask:{};position_ids:{};past_key_values:{}"'.format(
         ",".join(input_ids_shape),

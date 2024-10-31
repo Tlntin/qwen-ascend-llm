@@ -265,16 +265,16 @@ class Qwen2Attention(nn.Module):
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
-        kv_seq_len = key_states.shape[-2]
-        if past_key_value is not None:
-            if self.layer_idx is None:
-                raise ValueError(
-                    f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
-                    "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
-                    "with a layer index."
-                )
-            # kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-            kv_seq_len += past_key_value.shape[1]
+        kv_seq_len = key_states.shape[-2] + past_key_value.shape[2]
+        # if past_key_value is not None:
+        #     if self.layer_idx is None:
+        #         raise ValueError(
+        #             f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
+        #             "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
+        #             "with a layer index."
+        #         )
+        #     # kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+        #     kv_seq_len += past_key_value.shape[2]
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
         output_cache = (key_states, value_states)
@@ -756,8 +756,8 @@ class Qwen2DecoderLayer(nn.Module):
                 "unexpected results may be encountered."
             )
         # self.self_attn = QWEN2_ATTENTION_CLASSES[config._attn_implementation](config, layer_idx)
-        self.self_attn = Qwen2SdpaAttention(config, layer_idx)
-        # self.self_attn = Qwen2Attention(config, layer_idx)
+        # self.self_attn = Qwen2SdpaAttention(config, layer_idx)
+        self.self_attn = Qwen2Attention(config, layer_idx)
         self.mlp = Qwen2MLP(config)
         self.input_layernorm = Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
@@ -1109,14 +1109,15 @@ class Qwen2Model(Qwen2PreTrainedModel):
             attention_mask,
         )
         #  === if use Qwen2Attention ===
-        # dtype = past_key_values.dtype
-        # device = input_ids.device
-        # attention_mask = torch.zeros_like(full_attention_mask, dtype=dtype).to(device)
+        dtype = past_key_values.dtype
+        device = input_ids.device
+        attention_mask = torch.zeros_like(full_attention_mask, dtype=dtype).to(device)
         # attention_mask.masked_fill_(full_attention_mask, torch.finfo(dtype).min)
+        attention_mask.masked_fill_(full_attention_mask, -10000.0)
 
         # == if use Qwen2SdpaAttention ===
         # copy from chatglm3-6b
-        attention_mask = ~full_attention_mask
+        # attention_mask = ~full_attention_mask
 
         hidden_states = inputs_embeds
 

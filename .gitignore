@@ -1,3 +1,5 @@
+.idea
+.vscode
 download/
 output/
 inference/
@@ -5,6 +7,6 @@ kernel_meta/
 */__pycache__/
 __pycache__/
 ./*/__pycache__/
-.idea
 export/*.json
-*.json
+fusion_result.json
+result/

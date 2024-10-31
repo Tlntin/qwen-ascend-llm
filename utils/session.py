@@ -155,7 +155,7 @@ class AclSession(Session):
         self.prefill_log2_list = [2**index for index in self.prefill_log2_list]
         
     def reset(self):
-        self.model.reset();
+        self.model.reset()
     
     def __del__(self):
         from utils.engine import destroy_resource
